@@ -1,0 +1,87 @@
+
+[Nest] 107  - 02/07/2026, 1:30:06 PM   ERROR [UserbotService] [Broadcast] Failed to send to user 3871262979 using account 0cdf6477-26cc-4cf3-9157-2c8415e38d1e: FLOOD
+
+[Nest] 106  - 02/07/2026, 1:30:06 PM     LOG [SchedulerService] [Scheduler] Checking for efficient broadcast jobs...
+bot     
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+worker  
+
+[Nest] 107  - 02/07/2026, 1:30:08 PM     LOG [SchedulerService] [Scheduler] Checking for efficient broadcast jobs...
+
+[Nest] 107  - 02/07/2026, 1:30:09 PM     LOG [SchedulerService] [Scheduler] Checking for efficient broadcast jobs...
+
+[Nest] 107  - 02/07/2026, 1:30:09 PM     LOG [SchedulerService] [Scheduler] Checking for efficient broadcast jobs...
+
+[Nest] 107  - 02/07/2026, 1:30:09 PM   ERROR [UserbotService] [Broadcast] Failed to send to user 3678843574 using account 0cdf6477-26cc-4cf3-9157-2c8415e38d1e: FLOOD
+
+[Nest] 107  - 02/07/2026, 1:30:09 PM     LOG [SchedulerService] [Scheduler] Checking for efficient broadcast jobs...
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+bot     
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+worker  
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+
+[Nest] 107  - 02/07/2026, 1:30:12 PM   ERROR [UserbotService] [Broadcast] Failed to send to user 3725434798 using account 0cdf6477-26cc-4cf3-9157-2c8415e38d1e: FLOOD
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+
+Error: TIMEOUT
+
+    at /app/node_modules/telegram/client/updates.js:250:85
+
+    at async attempts (/app/node_modules/telegram/client/updates.js:234:20)
+
+    at async _updateLoop (/app/node_modules/telegram/client/updates.js:184:17)
+
+Error: TIMEOUT
+

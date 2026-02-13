@@ -1,0 +1,93 @@
+Qisqa javob:
+Yo‘q, hozirgi kod bilan serveringiz qotib qoladi yoki "Out of Memory" (RAM yetishmovchiligi) bilan o‘chadi.
+
+Sizning kodingizda 1000 ta akkaunt (Userbot) bir vaqtda ishga tushsa va har 5 daqiqada xabar yuborsa, quyidagi 3 ta jiddiy muammo yuzaga keladi:
+
+1. RAM (Tezkor xotira) to‘lib ketishi (Eng katta muammo)
+
+Sizning src/bot/userbot.service.ts faylingizda shunday qator bor:
+
+code
+TypeScript
+download
+content_copy
+expand_less
+private broadcastClients: Map<string, TelegramClient> = new Map();
+
+Muammo: Siz har bir ishlatilgan Telegram akkauntni xotirada (RAM) saqlab qolyapsiz va uni hech qachon o‘chirmayapsiz (disconnect qilinmayapti).
+
+Hisob-kitob: 1 ta faol GramJS (Telegram) klienti o‘rtacha 30MB - 50MB RAM yeydi.
+
+Natija: 1000 ta akkaunt x 50MB = 50,000 MB (50 GB) RAM kerak bo‘ladi.
+
+Sizning serveringiz: docker-compose.yml da limit 14GB.
+
+Oqibat: Bot taxminan 200-300 ta odamni ishlatgandan keyin server portlaydi.
+
+2. Navbat (Queue) tiqilib qolishi
+
+Sizning scheduler.service.ts har 60 soniyada ishlaydi.
+
+1000 ta odam har 5 daqiqada yuborsa 
+→
+→
+ har daqiqada 200 ta yangi ish (job) navbatga tushadi.
+
+broadcast.processor.ts da concurrency (bir vaqtda ishlash) standarti 1 ga teng.
+
+Muammo: Agar 1 ta xabar yuborish 5 soniya vaqt olsa, bot 1 daqiqada faqat 12 ta ishni bajaradi. Lekin navbatga 200 ta ish kelib tushyapti.
+
+Oqibat: Navbat soat sayin kattalashib ketadi va xabarlar 5 daqiqada emas, bir necha soat kechikib boradi.
+
+3. CPU va Tarmoq (Network) yuklamasi
+
+Agar 1000 ta akkaunt bir vaqtda "Login" bo‘lib turishga harakat qilsa, serveringizning protsessori (CPU) shifrlash (encryption) operatsiyalari bilan band bo‘lib qoladi va tarmoq kanali to‘ladi.
+
+✅ Yechim: Kodni qanday o‘zgartirish kerak?
+
+Bu yuklamani ko‘tarish uchun kodga 2 ta o‘zgartirish kiritish shart:
+
+1-qadam: Ishlatib bo‘lingan akkauntni o‘chirish (Memory Leak fix)
+
+src/bot/userbot.service.ts faylida broadcastMessage funksiyasining oxirida klientni xotiradan o‘chirib tashlash kerak.
+
+O‘zgartirish:
+broadcastMessage funksiyasi oxirida (return qilishdan oldin) quyidagini qo‘shing:
+
+code
+TypeScript
+download
+content_copy
+expand_less
+// ... (xabarlar yuborilib bo'lgandan keyin)
+
+// MUHIM: Xotirani tozalash uchun klientni o'chiramiz
+for (const [accountId, client] of clients) {
+  if (client.connected) {
+    await client.disconnect();
+  }
+  this.broadcastClients.delete(accountId); // Map dan o'chirish
+}
+
+return { success: errors.length === 0, count: sentCount, errors };
+
+Bu har bir "broadcast" tugagach, RAMni bo‘shatadi.
+
+2-qadam: Bir vaqtda ishlash tezligini oshirish
+
+docker-compose.yml faylida BROADCAST_CONCURRENCY ni oshirish kerak, toki navbat yig‘ilib qolmasin.
+
+code
+Yaml
+download
+content_copy
+expand_less
+environment:
+  - BROADCAST_CONCURRENCY=20  # 1 emas, 20 qiling
+
+Bu degani bir vaqtda 20 ta akkaunt ishga tushadi. 14GB RAM bilan 20-30 ta parallel jarayonni bemalol ko‘taradi.
+
+Xulosa
+
+Hozirgi kod bilan 1000 ta akkaunt ishlay olmaydi (RAM to‘lib server o‘chadi).
+Yuqoridagi 2 ta o‘zgartirishni qilsangiz, tizim 1000 ta akkauntni har 5 daqiqada xabar yuborishini muammosiz eplaydi.
