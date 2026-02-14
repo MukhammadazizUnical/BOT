@@ -240,6 +240,30 @@ async def ensure_logged_in(callback: CallbackQuery) -> bool:
     return False
 
 
+async def get_last_saved_message(user_id: int) -> str | None:
+    async with db_session() as db:
+        row = (
+            await db.execute(
+                select(SentMessage)
+                .where(SentMessage.user_id == str(user_id))
+                .order_by(SentMessage.created_at.desc(), SentMessage.id.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+    return row.text if row and row.text else None
+
+
+async def save_message_history_if_new(user_id: int, text: str) -> None:
+    content = (text or "").strip()
+    if not content:
+        return
+    last = await get_last_saved_message(user_id)
+    if last == content:
+        return
+    async with db_session() as db:
+        db.add(SentMessage(text=content, sent_count=0, user_id=str(user_id)))
+
+
 async def show_group_selection(message: Message, is_edit: bool = False):
     groups = await group_service.get_groups(str(message.from_user.id), active_only=False)
     text = "Guruhlarni tanlang:\n\n"
@@ -621,7 +645,12 @@ async def on_send_message_mode(callback: CallbackQuery):
     if not await ensure_logged_in(callback):
         return
     user_states[callback.from_user.id] = UserState.WAITING_BROADCAST_MSG
-    await callback.message.answer("Xabar matnini yuboring yoki rasm/video tashlang:")
+    last = await get_last_saved_message(callback.from_user.id)
+    if last:
+        preview = (last[:80] + "...") if len(last) > 80 else last
+        await callback.message.answer(f"Oxirgi saqlangan xabar:\n\n{preview}\n\nYangi xabar yuboring:")
+    else:
+        await callback.message.answer("Xabar matnini yuboring yoki rasm/video tashlang:")
     await callback.answer()
 
 
@@ -629,7 +658,21 @@ async def on_start_broadcast(callback: CallbackQuery):
     if not await ensure_logged_in(callback):
         return
     cfg = await scheduler_service.get_config(str(callback.from_user.id))
-    if not cfg or not cfg.message or not cfg.interval:
+    if not cfg or not cfg.interval:
+        await callback.message.answer(
+            "Auto-Broadcastni yoqish uchun avval intervalni sozlang (Xabar yuborish -> interval tanlash)."
+        )
+        await show_menu_callback(callback)
+        await callback.answer()
+        return
+
+    message_text = (cfg.message or "").strip()
+    if not message_text:
+        message_text = (await get_last_saved_message(callback.from_user.id) or "").strip()
+        if message_text:
+            await scheduler_service.set_config(str(callback.from_user.id), message=message_text)
+
+    if not message_text:
         await callback.message.answer(
             "Auto-Broadcastni yoqish uchun avval xabar va intervalni sozlang (Xabar yuborish -> interval tanlash)."
         )
@@ -1023,6 +1066,8 @@ async def on_text(message: Message):
 
     if state == UserState.WAITING_BROADCAST_MSG:
         broadcast_message_text[user_id] = text
+        await scheduler_service.set_config(str(user_id), message=text)
+        await save_message_history_if_new(user_id, text)
         user_states[user_id] = UserState.IDLE
         await message.answer("Xabar tasdiqlandi. Yuborish intervalini tanlang:", reply_markup=interval_menu())
         return
@@ -1037,12 +1082,17 @@ async def on_text(message: Message):
             return
         msg = broadcast_message_text.get(user_id)
         if not msg:
+            cfg = await scheduler_service.get_config(str(user_id))
+            if cfg and cfg.message:
+                msg = cfg.message
+            else:
+                msg = await get_last_saved_message(user_id)
+        if not msg:
             user_states[user_id] = UserState.IDLE
             await message.answer("Xabar topilmadi")
             return
         await scheduler_service.set_config(str(user_id), message=msg, interval=minutes * 60, is_active=True)
-        async with db_session() as db:
-            db.add(SentMessage(text=msg, sent_count=0, user_id=str(user_id)))
+        await save_message_history_if_new(user_id, msg)
         user_states[user_id] = UserState.IDLE
         await show_menu(message, f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa")
         return
@@ -1075,12 +1125,17 @@ async def on_interval_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     msg = broadcast_message_text.get(user_id)
     if not msg:
+        cfg = await scheduler_service.get_config(str(user_id))
+        if cfg and cfg.message:
+            msg = cfg.message
+        else:
+            msg = await get_last_saved_message(user_id)
+    if not msg:
         await callback.message.answer("Xabar topilmadi")
         await callback.answer()
         return
     await scheduler_service.set_config(str(user_id), message=msg, interval=minutes * 60, is_active=True)
-    async with db_session() as db:
-        db.add(SentMessage(text=msg, sent_count=0, user_id=str(user_id)))
+    await save_message_history_if_new(user_id, msg)
     user_states[user_id] = UserState.IDLE
     await callback.message.answer(f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa")
     await callback.answer()

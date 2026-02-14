@@ -5,7 +5,7 @@ from sqlalchemy import and_, or_, select
 
 from app.config import settings
 from app.db import db_session
-from app.models import BroadcastConfig
+from app.models import BroadcastAttempt, BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.utils import deterministic_jitter_ms
@@ -85,6 +85,7 @@ class SchedulerService:
     async def get_due_configs(self, limit: int) -> list[BroadcastConfig]:
         now = datetime.utcnow()
         early_factor = settings.scheduler_early_factor
+        due: list[BroadcastConfig] = []
         async with db_session() as db:
             rows = (
                 await db.execute(
@@ -99,17 +100,33 @@ class SchedulerService:
                 )
             ).scalars().all()
 
-        due: list[BroadcastConfig] = []
-        for row in rows:
-            if row.interval is None:
-                continue
-            threshold_seconds = max(60, int(row.interval * early_factor))
-            if row.last_run_at is None:
-                due.append(row)
-                continue
-            elapsed = (now - row.last_run_at).total_seconds()
-            if elapsed >= threshold_seconds:
-                due.append(row)
+            for row in rows:
+                pending_due_count = (
+                    await db.execute(
+                        select(BroadcastAttempt.id)
+                        .where(
+                            BroadcastAttempt.user_id == row.user_id,
+                            BroadcastAttempt.campaign_id == str(row.id),
+                            BroadcastAttempt.status == "pending",
+                            or_(BroadcastAttempt.next_attempt_at.is_(None), BroadcastAttempt.next_attempt_at <= now),
+                        )
+                        .limit(1)
+                    )
+                ).scalars().first()
+
+                if pending_due_count is not None:
+                    due.append(row)
+                    continue
+
+                if row.interval is None:
+                    continue
+                threshold_seconds = max(60, int(row.interval * early_factor))
+                if row.last_run_at is None:
+                    due.append(row)
+                    continue
+                elapsed = (now - row.last_run_at).total_seconds()
+                if elapsed >= threshold_seconds:
+                    due.append(row)
         return due
 
     async def set_config(

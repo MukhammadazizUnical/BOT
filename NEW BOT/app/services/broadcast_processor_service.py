@@ -33,22 +33,24 @@ class BroadcastProcessorService:
         message = payload.get("message", "")
         campaign_id = payload.get("campaignId", "")
         queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
+        campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
 
-        async with db_session() as db:
-            cfg = (
-                await db.execute(
-                    select(BroadcastConfig).where(
-                        BroadcastConfig.user_id == user_id,
-                        BroadcastConfig.id == int(campaign_id) if str(campaign_id).isdigit() else -1,
+        if campaign_db_id is not None:
+            async with db_session() as db:
+                cfg = (
+                    await db.execute(
+                        select(BroadcastConfig).where(
+                            BroadcastConfig.user_id == user_id,
+                            BroadcastConfig.id == campaign_db_id,
+                        )
                     )
-                )
-            ).scalars().first()
+                ).scalars().first()
 
-        if not cfg or not cfg.is_active:
-            return {"success": True, "count": 0, "errors": [], "error": "inactive-campaign"}
+            if not cfg or not cfg.is_active:
+                return {"success": True, "count": 0, "errors": [], "error": "inactive-campaign"}
 
-        if (cfg.message or "") != str(message):
-            return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
+            if (cfg.message or "") != str(message):
+                return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
 
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)

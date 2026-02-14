@@ -19,6 +19,7 @@ from sqlalchemy import and_, func, or_, select, update
 from app.config import settings
 from app.db import db_session
 from app.models import BroadcastAttempt, BroadcastConfig, TelegramAccount, User, UserGroup
+from app.redis_client import redis_client
 from app.utils import (
     build_attempt_idempotency_key,
     classify_telegram_error,
@@ -555,6 +556,29 @@ class UserbotService:
 
         cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60)))
 
+        if config is not None:
+            slot_source = config.last_run_at or utcnow()
+            run_slot = int(slot_source.timestamp() // cycle_interval_seconds)
+            cycle_key = f"broadcast:cycle-slot:{user_id}:{campaign_id}"
+            prev_slot = await redis_client.get(cycle_key)
+            current_slot = str(run_slot)
+            if prev_slot != current_slot:
+                await redis_client.set(cycle_key, current_slot, ex=max(3600, cycle_interval_seconds * 8))
+                async with db_session() as db:
+                    await db.execute(
+                        update(BroadcastAttempt)
+                        .where(BroadcastAttempt.user_id == str(user_id), BroadcastAttempt.campaign_id == campaign_id)
+                        .values(
+                            status="pending",
+                            retry_count=0,
+                            next_attempt_at=utcnow(),
+                            started_at=None,
+                            sent_at=None,
+                            terminal_reason_code=None,
+                            last_error=None,
+                        )
+                    )
+
         if not active_accounts:
             return BroadcastExecutionResult(success=False, count=0, errors=[], error="Faol Telegram akkaunt topilmadi")
 
@@ -640,7 +664,10 @@ class UserbotService:
                     )
             except Exception as e:
                 err_msg = normalize_error_message(e)
-                classified = classify_telegram_error(e)
+                classified = classify_telegram_error(
+                    e,
+                    slowmode_default_seconds=settings.telegram_slowmode_default_seconds,
+                )
                 retry_count = attempt.retry_count + 1
                 exhausted = retry_count > attempt.max_retries
 

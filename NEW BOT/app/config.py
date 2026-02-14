@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:1111@localhost:5432/tgbot"
     redis_url: str = "redis://localhost:6379/0"
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
 
     broadcast_concurrency: int = 8
     broadcast_job_attempts: int = 3
@@ -31,6 +33,7 @@ class Settings(BaseSettings):
     telegram_per_account_mpm: int = 6
     telegram_per_account_min_delay_ms: int = 3500
     telegram_global_mps: int = 125
+    telegram_slowmode_default_seconds: int = 300
 
     broadcast_max_retries: int = 3
     broadcast_retry_base_ms: int = 2000

@@ -23,7 +23,7 @@ def normalize_error_message(error: Exception | str | object) -> str:
     return str(error)
 
 
-def classify_telegram_error(error: Exception | str | object) -> dict:
+def classify_telegram_error(error: Exception | str | object, slowmode_default_seconds: int = 300) -> dict:
     msg = normalize_error_message(error).upper()
     retry_after_seconds = getattr(error, "seconds", None)
     if isinstance(retry_after_seconds, int) and retry_after_seconds <= 0:
@@ -34,6 +34,9 @@ def classify_telegram_error(error: Exception | str | object) -> dict:
         if match:
             value = int(match.group(1))
             retry_after_seconds = value if value > 0 else None
+
+    if retry_after_seconds is None and "SLOWMODE_WAIT" in msg:
+        retry_after_seconds = max(1, int(slowmode_default_seconds))
 
     if any(token in msg for token in RETRIABLE_ERROR_TOKENS):
         return {
