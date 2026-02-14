@@ -11,6 +11,7 @@ services:
       - '3011:3010'
     depends_on:
       - postgres
+      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 3010
 
   worker:
@@ -23,6 +24,7 @@ services:
       - TZ=UTC-5
     depends_on:
       - postgres
+      - redis
     command: arq app.worker.WorkerSettings
 
   bot:
@@ -35,6 +37,7 @@ services:
       - TZ=UTC-5
     depends_on:
       - postgres
+      - redis
     command: python -m app.bot_runner
 
   postgres:
@@ -50,6 +53,14 @@ services:
       - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    environment:
+      - TZ=UTC-5
+    ports:
+      - '6381:6379'
 
 volumes:
   postgres_data:

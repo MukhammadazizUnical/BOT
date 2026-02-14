@@ -24,3 +24,4 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = max(1, settings.broadcast_concurrency)
+    poll_delay = 5.0

@@ -19,7 +19,6 @@ from sqlalchemy import and_, func, or_, select, update
 from app.config import settings
 from app.db import db_session
 from app.models import BroadcastAttempt, BroadcastConfig, TelegramAccount, User, UserGroup
-from app.redis_client import redis_client
 from app.utils import (
     build_attempt_idempotency_key,
     classify_telegram_error,
@@ -556,14 +555,10 @@ class UserbotService:
 
         cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60)))
 
-        if config is not None:
-            slot_source = config.last_run_at or utcnow()
-            run_slot = int(slot_source.timestamp() // cycle_interval_seconds)
-            cycle_key = f"broadcast:cycle-slot:{user_id}:{campaign_id}"
-            prev_slot = await redis_client.get(cycle_key)
-            current_slot = str(run_slot)
-            if prev_slot != current_slot:
-                await redis_client.set(cycle_key, current_slot, ex=max(3600, cycle_interval_seconds * 8))
+        if config is not None and config.last_run_at is not None:
+            now_ts = int(utcnow().timestamp())
+            last_run_ts = int(config.last_run_at.timestamp())
+            if (now_ts // cycle_interval_seconds) != (last_run_ts // cycle_interval_seconds):
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastAttempt)
