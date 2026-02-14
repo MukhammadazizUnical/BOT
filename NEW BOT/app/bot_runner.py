@@ -1137,7 +1137,7 @@ async def on_interval_callback(callback: CallbackQuery):
     await scheduler_service.set_config(str(user_id), message=msg, interval=minutes * 60, is_active=True)
     await save_message_history_if_new(user_id, msg)
     user_states[user_id] = UserState.IDLE
-    await callback.message.answer(f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa")
+    await show_menu_callback(callback, f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa")
     await callback.answer()
 
 
