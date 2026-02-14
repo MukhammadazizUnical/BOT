@@ -66,10 +66,17 @@ def compute_retry_delay_ms(
 ) -> int:
     exponential = min(max_delay_ms, base_delay_ms * (2 ** retry_count))
     provider_delay = (retry_after_seconds or 0) * 1000
-    base = max(exponential, provider_delay)
-    jitter_range = max(0, math.floor(base * jitter_ratio))
+
+    # Provider-mandated wait (e.g. slow mode / flood wait) must not be clamped
+    # by local max backoff; otherwise 5m waits get retried too early.
+    if provider_delay > 0:
+        jitter_range = max(0, math.floor(provider_delay * jitter_ratio))
+        jitter = random.randint(0, jitter_range) if jitter_range > 0 else 0
+        return provider_delay + jitter
+
+    jitter_range = max(0, math.floor(exponential * jitter_ratio))
     jitter = random.randint(0, jitter_range) if jitter_range > 0 else 0
-    return min(max_delay_ms, base + jitter)
+    return min(max_delay_ms, exponential + jitter)
 
 
 def build_attempt_idempotency_key(campaign_id: str, target_group_id: str) -> str:

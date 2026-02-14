@@ -33,9 +33,9 @@ class AccessService:
                     )
                 except IntegrityError:
                     pass
-                return False, "⛔ Sizda ruxsat yo'q. Admin ga so'rov yuborildi.\nMurojaat uchun: @Mr_usmonovvvv yoki @sdezreg"
+                return False, "⛔ Ruxsat yo'q. Admin ga murojaat qiling: @Mr_usmonovvvv"
 
             if user.expires_at and datetime.utcnow() > user.expires_at:
-                return False, "⚠️ Obuna vaqtingiz tugagan.\nMurojaat uchun: @Mr_usmonovvvv yoki @sdezreg"
+                return False, "⚠️ Obuna vaqtingiz tugagan. Admin ga murojaat qiling: @Mr_usmonovvvv"
 
         return True, None

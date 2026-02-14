@@ -85,7 +85,7 @@ def main_menu(has_session: bool, is_admin_user: bool, is_active: bool = False) -
         rows = [
             [
                 InlineKeyboardButton(text="🕒 So'rovlar", callback_data="admin_panel_requested"),
-                InlineKeyboardButton(text="✅ Tasdiqlangan", callback_data="admin_panel_confirmed"),
+                InlineKeyboardButton(text="✅ Ulangan", callback_data="admin_panel_confirmed"),
             ],
             [InlineKeyboardButton(text="👥 Barcha foydalanuvchilar", callback_data="admin_panel_all")],
             [InlineKeyboardButton(text="📣 Barchaga xabar yuborish", callback_data="admin_announce")],
@@ -148,7 +148,7 @@ async def show_menu(message: Message, notice: str | None = None):
             "👑 Admin Panel\n\n"
             f"👥 Jami foydalanuvchi: {total}\n"
             f"🕒 So'rovlar: {requested}\n"
-            f"✅ Faollar: {confirmed}\n\n"
+            f"✅ Ulangan: {confirmed}\n\n"
             "Kerakli bo'limni tanlang:"
         )
     else:
@@ -197,7 +197,7 @@ async def show_menu_callback(callback: CallbackQuery, notice: str | None = None)
             "👑 Admin Panel\n\n"
             f"👥 Jami foydalanuvchi: {total}\n"
             f"🕒 So'rovlar: {requested}\n"
-            f"✅ Faollar: {confirmed}\n\n"
+            f"✅ Ulangan: {confirmed}\n\n"
             "Kerakli bo'limni tanlang:"
         )
     else:
@@ -321,7 +321,7 @@ async def render_admin_panel(
     filter_title = {
         "all": "👥 Barchasi",
         "requested": "🕒 So'rovlar",
-        "confirmed": "✅ Tasdiqlangan",
+        "confirmed": "✅ Ulangan",
     }.get(filter_name, "👥 Barchasi")
 
     title = (
@@ -329,7 +329,7 @@ async def render_admin_panel(
         "📊 Statistika\n"
         f"• Jami foydalanuvchi: {total}\n"
         f"• So'rovlar: {requested}\n"
-        f"• Tasdiqlangan: {confirmed}\n\n"
+        f"• Ulangan: {confirmed}\n\n"
         f"🔎 Filter: {filter_title}\n"
         f"📄 Sahifa: {page + 1}/{total_pages}"
     )
@@ -361,7 +361,7 @@ async def render_admin_panel(
     rows += [
         [
             InlineKeyboardButton(text="👥 Barchasi", callback_data="admin_panel_all"),
-            InlineKeyboardButton(text="✅ Tasdiqlangan", callback_data="admin_panel_confirmed"),
+            InlineKeyboardButton(text="✅ Ulangan", callback_data="admin_panel_confirmed"),
             InlineKeyboardButton(text="🕒 So'rovlar", callback_data="admin_panel_requested"),
         ],
         [InlineKeyboardButton(text="🔄 Yangilash", callback_data=f"admin_panel_{filter_name}_page_{page}")],

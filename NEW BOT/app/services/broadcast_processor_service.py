@@ -2,9 +2,12 @@ import random
 from datetime import datetime
 
 from app.config import settings
+from app.db import db_session
+from app.models import BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.services.userbot_service import UserbotService
+from sqlalchemy import select
 
 
 class BroadcastProcessorService:
@@ -30,6 +33,22 @@ class BroadcastProcessorService:
         message = payload.get("message", "")
         campaign_id = payload.get("campaignId", "")
         queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
+
+        async with db_session() as db:
+            cfg = (
+                await db.execute(
+                    select(BroadcastConfig).where(
+                        BroadcastConfig.user_id == user_id,
+                        BroadcastConfig.id == int(campaign_id) if str(campaign_id).isdigit() else -1,
+                    )
+                )
+            ).scalars().first()
+
+        if not cfg or not cfg.is_active:
+            return {"success": True, "count": 0, "errors": [], "error": "inactive-campaign"}
+
+        if (cfg.message or "") != str(message):
+            return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
 
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)

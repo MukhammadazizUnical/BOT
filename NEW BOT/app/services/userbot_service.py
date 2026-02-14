@@ -461,8 +461,6 @@ class UserbotService:
         available_account_ids: list[str],
         max_retries: int,
     ) -> None:
-        min_pending_next_attempt = None
-        min_pending_next_attempt = None
         async with db_session() as db:
             rows = (
                 await db.execute(
@@ -471,36 +469,6 @@ class UserbotService:
                     .group_by(BroadcastAttempt.status)
                 )
             ).all()
-
-            min_pending_next_attempt = (
-                await db.execute(
-                    select(func.min(BroadcastAttempt.next_attempt_at)).where(
-                        BroadcastAttempt.user_id == str(user_id),
-                        BroadcastAttempt.campaign_id == campaign_id,
-                        BroadcastAttempt.status == "pending",
-                    )
-                )
-            ).scalar_one_or_none()
-
-            min_pending_next_attempt = (
-                await db.execute(
-                    select(func.min(BroadcastAttempt.next_attempt_at)).where(
-                        BroadcastAttempt.user_id == str(user_id),
-                        BroadcastAttempt.campaign_id == campaign_id,
-                        BroadcastAttempt.status == "pending",
-                    )
-                )
-            ).scalar_one_or_none()
-
-            min_pending_next_attempt = (
-                await db.execute(
-                    select(func.min(BroadcastAttempt.next_attempt_at)).where(
-                        BroadcastAttempt.user_id == str(user_id),
-                        BroadcastAttempt.campaign_id == campaign_id,
-                        BroadcastAttempt.status == "pending",
-                    )
-                )
-            ).scalar_one_or_none()
             total_existing = sum(r[1] for r in rows)
             active_existing = sum(r[1] for r in rows if r[0] in {"pending", "in-flight"})
 
