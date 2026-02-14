@@ -114,6 +114,7 @@ class UserbotService:
             name=temp_session_name,
             api_id=settings.tg_api_id,
             api_hash=settings.tg_api_hash,
+            no_updates=True,
         )
         try:
             await client.connect()
@@ -166,6 +167,7 @@ class UserbotService:
                 name=session_name,
                 api_id=settings.tg_api_id,
                 api_hash=settings.tg_api_hash,
+                no_updates=True,
             )
             await client.connect()
             transient_client = True
@@ -242,6 +244,7 @@ class UserbotService:
                 name=session_name,
                 api_id=settings.tg_api_id,
                 api_hash=settings.tg_api_hash,
+                no_updates=True,
             )
             await client.connect()
             transient_client = True
@@ -314,6 +317,7 @@ class UserbotService:
                     api_hash=settings.tg_api_hash,
                     session_string=account.session_string,
                     in_memory=True,
+                    no_updates=True,
                 )
                 await client.start()
                 if account_id not in self.peer_cache_warmed:
