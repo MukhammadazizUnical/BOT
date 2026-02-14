@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     tg_api_hash: str = ""
     tg_manual_video_id: str = ""
     tg_announce_sticker_id: str = ""
+    owner_user_id: str = ""
 
     database_url: str = "postgresql+asyncpg://postgres:1111@localhost:5432/tgbot"
     redis_url: str = "redis://localhost:6379/0"

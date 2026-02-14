@@ -235,8 +235,8 @@ async def show_menu_callback(callback: CallbackQuery, notice: str | None = None)
 async def ensure_logged_in(callback: CallbackQuery) -> bool:
     if await session_service.has_session(callback.from_user.id):
         return True
-    await show_menu_callback(callback)
-    await callback.answer()
+    await callback.answer("⛔ Ruxsat yo'q. Avval login qiling.", show_alert=True)
+    await show_menu_callback(callback, "⛔ Ruxsat yo'q. Avval login qiling.")
     return False
 
 
