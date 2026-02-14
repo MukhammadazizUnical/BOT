@@ -16,12 +16,12 @@ class AccessService:
         return (username or "").strip().lstrip("@").lower()
 
     async def check_access(self, tg_user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> tuple[bool, str | None]:
+        if self.normalize_username(username) in self.super_admins:
+            return True, None
+
         owner = (settings.owner_user_id or "").strip()
         if owner and str(tg_user_id) != owner:
             return False, "⛔ Ruxsat yo'q. Admin ga murojaat qiling: @Mr_usmonovvvv"
-
-        if self.normalize_username(username) in self.super_admins:
-            return True, None
 
         async with db_session() as db:
             user = await db.get(AllowedUser, str(tg_user_id))
