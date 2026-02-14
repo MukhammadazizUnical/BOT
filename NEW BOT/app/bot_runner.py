@@ -233,6 +233,16 @@ async def show_menu_callback(callback: CallbackQuery, notice: str | None = None)
 
 
 async def ensure_logged_in(callback: CallbackQuery) -> bool:
+    ok, reason = await access_service.check_access(
+        tg_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+    if not ok:
+        await callback.answer(reason or "⛔ Ruxsat yo'q", show_alert=True)
+        return False
+
     if await session_service.has_session(callback.from_user.id):
         return True
     await callback.answer("⛔ Ruxsat yo'q. Avval login qiling.", show_alert=True)
@@ -979,6 +989,17 @@ async def on_admin_announce(callback: CallbackQuery):
 
 
 async def on_contact(message: Message):
+    ok, reason = await access_service.check_access(
+        tg_user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+    if not ok:
+        user_states[message.from_user.id] = UserState.IDLE
+        await message.answer(reason or "⛔ Ruxsat yo'q")
+        return
+
     user_id = message.from_user.id
     if user_states.get(user_id) != UserState.WAITING_PHONE:
         return
@@ -994,6 +1015,17 @@ async def on_contact(message: Message):
 
 
 async def on_text(message: Message):
+    ok, reason = await access_service.check_access(
+        tg_user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+    if not ok:
+        user_states[message.from_user.id] = UserState.IDLE
+        await message.answer(reason or "⛔ Ruxsat yo'q")
+        return
+
     user_id = message.from_user.id
     text = (message.text or "").strip()
     state = user_states.get(user_id, UserState.IDLE)
