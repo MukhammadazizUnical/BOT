@@ -559,24 +559,28 @@ class UserbotService:
 
         cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60)))
 
-        if config is not None and config.last_run_at is not None:
-            now_ts = int(utcnow().timestamp())
-            last_run_ts = int(config.last_run_at.timestamp())
-            if (now_ts // cycle_interval_seconds) != (last_run_ts // cycle_interval_seconds):
-                async with db_session() as db:
-                    await db.execute(
-                        update(BroadcastAttempt)
-                        .where(BroadcastAttempt.user_id == str(user_id), BroadcastAttempt.campaign_id == campaign_id)
-                        .values(
-                            status="pending",
-                            retry_count=0,
-                            next_attempt_at=utcnow(),
-                            started_at=None,
-                            sent_at=None,
-                            terminal_reason_code=None,
-                            last_error=None,
-                        )
+        if config is not None:
+            sent_cutoff = utcnow() - timedelta(seconds=cycle_interval_seconds)
+            async with db_session() as db:
+                await db.execute(
+                    update(BroadcastAttempt)
+                    .where(
+                        BroadcastAttempt.user_id == str(user_id),
+                        BroadcastAttempt.campaign_id == campaign_id,
+                        BroadcastAttempt.status == "sent",
+                        BroadcastAttempt.sent_at.is_not(None),
+                        BroadcastAttempt.sent_at <= sent_cutoff,
                     )
+                    .values(
+                        status="pending",
+                        retry_count=0,
+                        next_attempt_at=utcnow(),
+                        started_at=None,
+                        sent_at=None,
+                        terminal_reason_code=None,
+                        last_error=None,
+                    )
+                )
 
         if not active_accounts:
             return BroadcastExecutionResult(success=False, count=0, errors=[], error="Faol Telegram akkaunt topilmadi")
