@@ -393,7 +393,6 @@ class UserbotService:
                     .where(
                         TelegramAccount.user_id == str(user_id),
                         TelegramAccount.is_active.is_(True),
-                        or_(TelegramAccount.is_flood_wait.is_(False), TelegramAccount.flood_wait_until <= utcnow()),
                     )
                     .order_by(TelegramAccount.created_at.desc())
                 )

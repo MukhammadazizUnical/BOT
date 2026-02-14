@@ -55,7 +55,7 @@ class BroadcastProcessorService:
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)
         if not lock:
-            return {"success": True, "count": 0, "errors": [], "error": None}
+            return {"success": False, "count": 0, "errors": [], "error": "user-lock-busy"}
 
         try:
             result = await self.userbot_service.broadcast_message(
@@ -84,8 +84,9 @@ class BroadcastProcessorService:
                         delay_ms=delay,
                     )
 
+            did_send = int(result.count or 0) > 0
             return {
-                "success": result.success,
+                "success": did_send and result.error is None,
                 "count": result.count,
                 "errors": result.errors,
                 "error": result.error,

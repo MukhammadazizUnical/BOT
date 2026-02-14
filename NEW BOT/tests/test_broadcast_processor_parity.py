@@ -56,7 +56,7 @@ async def test_continuation_is_enqueued_for_deferred_batch(monkeypatch):
     payload = {"userId": "10", "message": "hello", "campaignId": "cmp-1", "queuedAt": "2026-01-01T00:00:00Z"}
     out = await service.process(payload)
 
-    assert out["success"] is False
+    assert out["success"] is True
     assert len(userbot.calls) == 1
     assert len(queue.calls) == 1
     assert queue.calls[0]["campaign_id"] == "cmp-1"
