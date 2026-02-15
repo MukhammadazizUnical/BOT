@@ -132,7 +132,8 @@ class BroadcastProcessorService:
 
             summary = result.summary or {}
             failed = int(summary.get("failed", 0) or 0)
-            is_failure = bool(result.error) or failed > 0
+            sent_count = int(result.count or 0)
+            is_failure = bool(result.error) or (failed > 0 and sent_count == 0)
             pending = int(summary.get("pending", 0) or 0)
             in_flight = int(summary.get("inFlight", 0) or 0)
 
@@ -148,7 +149,7 @@ class BroadcastProcessorService:
 
             return {
                 "success": not is_failure,
-                "count": result.count,
+                "count": sent_count,
                 "errors": result.errors,
                 "error": result.error,
                 "summary": summary,
