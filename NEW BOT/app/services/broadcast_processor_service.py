@@ -94,7 +94,7 @@ class BroadcastProcessorService:
                         campaign_id=campaign_id,
                         queued_at=queued_at,
                         delay_ms=delay,
-                        job_id=self.queue_service.continuation_job_id(
+                        job_id=BroadcastQueueService.continuation_job_id(
                             user_id=user_id,
                             campaign_id=campaign_id,
                         ),
