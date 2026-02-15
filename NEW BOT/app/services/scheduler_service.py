@@ -5,7 +5,7 @@ from sqlalchemy import and_, or_, select
 
 from app.config import settings
 from app.db import db_session
-from app.models import BroadcastAttempt, BroadcastConfig
+from app.models import BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.utils import deterministic_jitter_ms
@@ -101,23 +101,6 @@ class SchedulerService:
             ).scalars().all()
 
             for row in rows:
-                pending_due_count = (
-                    await db.execute(
-                        select(BroadcastAttempt.id)
-                        .where(
-                            BroadcastAttempt.user_id == row.user_id,
-                            BroadcastAttempt.campaign_id == str(row.id),
-                            BroadcastAttempt.status == "pending",
-                            or_(BroadcastAttempt.next_attempt_at.is_(None), BroadcastAttempt.next_attempt_at <= now),
-                        )
-                        .limit(1)
-                    )
-                ).scalars().first()
-
-                if pending_due_count is not None:
-                    due.append(row)
-                    continue
-
                 if row.interval is None:
                     continue
                 threshold_seconds = max(60, int(row.interval * early_factor))
