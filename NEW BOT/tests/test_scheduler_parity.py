@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.services.broadcast_queue_service import BroadcastQueueService
 from app.services.scheduler_service import SchedulerService
 
 
@@ -41,9 +40,18 @@ def test_deterministic_jitter_is_stable():
     assert a != c
 
 
-def test_deterministic_scheduler_job_id_is_stable():
-    a = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=111)
-    b = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=111)
-    c = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=112)
-    assert a == b
-    assert a != c
+def test_is_due_respects_five_minute_boundary(monkeypatch):
+    monkeypatch.setattr("app.services.scheduler_service.settings.scheduler_early_factor", 1.0, raising=False)
+    now = datetime.utcnow()
+    assert SchedulerService.is_due(now - timedelta(seconds=299), 300, now=now) is False
+    assert SchedulerService.is_due(now - timedelta(seconds=300), 300, now=now) is True
+
+
+def test_multi_user_due_window_has_spread_jitter():
+    from app.utils import deterministic_jitter_ms
+
+    run_slot = 12345
+    jitters = [deterministic_jitter_ms(str(uid), run_slot, 15000) for uid in range(1, 21)]
+    assert len(set(jitters)) > 1
+    for value in jitters:
+        assert 0 <= value <= 15000

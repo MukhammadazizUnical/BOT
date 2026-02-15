@@ -54,3 +54,10 @@
 - [ ] Worker logs show no critical exceptions
 - [ ] App health endpoint responds: `GET /health`
 - [ ] Queue jobs process without per-user lock violation warnings
+
+## 8) Staged rollout checks (1 -> 2 -> 4 workers)
+
+- [ ] Run with 1 worker for 15-30 minutes and record p95 lag
+- [ ] Run with 2 workers for 15-30 minutes and compare p95 lag/error outcomes
+- [ ] Run with 4 workers for 15-30 minutes and compare p95 lag/error outcomes
+- [ ] Confirm `no-account` and `provider-constrained-delay` outcomes are within expected range

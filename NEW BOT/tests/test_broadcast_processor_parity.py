@@ -83,7 +83,44 @@ async def test_pending_only_result_is_not_failure(monkeypatch):
     out = await service.process(payload)
 
     assert out["success"] is True
+    assert out["outcome"] == "deferred"
+    assert out["lagMs"] >= 0
+    assert "scheduledAt" in out
+    assert "startedAt" in out
     assert len(queue.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_lock_busy_returns_non_failure_outcome(monkeypatch):
+    monkeypatch.setattr(settings, "bot_role", "worker", raising=False)
+    userbot = DummyUserbot(BroadcastExecutionResult(True, 0, []))
+    queue = DummyQueue()
+    service = BroadcastProcessorService(userbot, queue)
+    monkeypatch.setattr(service, "acquire_user_lock", lambda *args, **kwargs: _async_false())
+
+    out = await service.process({"userId": "10", "message": "hello", "campaignId": "cmp-1", "queuedAt": "2026-01-01T00:00:00Z"})
+
+    assert out["success"] is True
+    assert out["error"] == "user-lock-busy"
+    assert out["outcome"] == "lock-busy"
+    assert len(userbot.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_no_account_is_structured_outcome(monkeypatch):
+    monkeypatch.setattr(settings, "bot_role", "worker", raising=False)
+    result = BroadcastExecutionResult(False, 0, [], error="Faol Telegram akkaunt topilmadi", summary={"failed": 0, "pending": 0, "inFlight": 0})
+    userbot = DummyUserbot(result)
+    queue = DummyQueue()
+    service = BroadcastProcessorService(userbot, queue)
+    monkeypatch.setattr(service, "acquire_user_lock", lambda *args, **kwargs: _async_true())
+    monkeypatch.setattr(service, "release_user_lock", lambda *args, **kwargs: _async_none())
+
+    out = await service.process({"userId": "10", "message": "hello", "campaignId": "cmp-1", "queuedAt": "2026-01-01T00:00:00Z"})
+
+    assert out["success"] is False
+    assert out["outcome"] == "no-account"
+    assert len(queue.calls) == 0
 
 
 async def _async_true():
@@ -92,3 +129,7 @@ async def _async_true():
 
 async def _async_none():
     return None
+
+
+async def _async_false():
+    return False

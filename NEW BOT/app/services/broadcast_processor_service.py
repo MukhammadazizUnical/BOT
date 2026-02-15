@@ -27,13 +27,32 @@ class BroadcastProcessorService:
 
     async def process(self, payload: dict) -> dict:
         if settings.bot_role.strip().lower() != "worker":
-            return {"success": True, "count": 0, "errors": []}
+            return {
+                "success": True,
+                "count": 0,
+                "errors": [],
+                "outcome": "skipped-non-worker",
+            }
 
         user_id = str(payload.get("userId"))
         message = payload.get("message", "")
         campaign_id = payload.get("campaignId", "")
         queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
+        started_at = datetime.utcnow()
         campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
+
+        def parse_iso(value: str) -> datetime | None:
+            try:
+                normalized = str(value).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(normalized)
+                return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+            except Exception:
+                return None
+
+        queued_dt = parse_iso(queued_at)
+        lag_ms = 0
+        if queued_dt is not None:
+            lag_ms = max(0, int((started_at - queued_dt).total_seconds() * 1000))
 
         if campaign_db_id is not None:
             async with db_session() as db:
@@ -47,15 +66,42 @@ class BroadcastProcessorService:
                 ).scalars().first()
 
             if not cfg or not cfg.is_active:
-                return {"success": True, "count": 0, "errors": [], "error": "inactive-campaign"}
+                return {
+                    "success": True,
+                    "count": 0,
+                    "errors": [],
+                    "error": "inactive-campaign",
+                    "outcome": "inactive-campaign",
+                    "scheduledAt": queued_at,
+                    "startedAt": started_at.isoformat(),
+                    "lagMs": lag_ms,
+                }
 
             if (cfg.message or "") != str(message):
-                return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
+                return {
+                    "success": True,
+                    "count": 0,
+                    "errors": [],
+                    "error": "stale-payload",
+                    "outcome": "stale-message",
+                    "scheduledAt": queued_at,
+                    "startedAt": started_at.isoformat(),
+                    "lagMs": lag_ms,
+                }
 
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)
         if not lock:
-            return {"success": True, "count": 0, "errors": [], "error": "user-lock-busy"}
+            return {
+                "success": True,
+                "count": 0,
+                "errors": [],
+                "error": "user-lock-busy",
+                "outcome": "lock-busy",
+                "scheduledAt": queued_at,
+                "startedAt": started_at.isoformat(),
+                "lagMs": lag_ms,
+            }
 
         try:
             result = await self.userbot_service.broadcast_message(
@@ -87,12 +133,29 @@ class BroadcastProcessorService:
             summary = result.summary or {}
             failed = int(summary.get("failed", 0) or 0)
             is_failure = bool(result.error) or failed > 0
+            pending = int(summary.get("pending", 0) or 0)
+            in_flight = int(summary.get("inFlight", 0) or 0)
+
+            outcome = "sent"
+            if result.error == "Faol Telegram akkaunt topilmadi":
+                outcome = "no-account"
+            elif is_failure:
+                outcome = "failed"
+            elif bool(summary.get("providerConstrainedDelay", False)):
+                outcome = "provider-constrained-delay"
+            elif pending > 0 or in_flight > 0:
+                outcome = "deferred"
+
             return {
                 "success": not is_failure,
                 "count": result.count,
                 "errors": result.errors,
                 "error": result.error,
                 "summary": summary,
+                "outcome": outcome,
+                "scheduledAt": queued_at,
+                "startedAt": started_at.isoformat(),
+                "lagMs": lag_ms,
             }
         finally:
             await self.release_user_lock(user_id, token)

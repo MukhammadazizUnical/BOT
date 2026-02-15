@@ -3,6 +3,7 @@ import logging
 import uuid
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -53,6 +54,21 @@ class UserbotService:
         self.remote_groups_last_fetch_failure: dict[str, int] = {}
 
         self.metrics = defaultdict(int)
+
+    @staticmethod
+    def cycle_cutoff(now: datetime, cycle_interval_seconds: int) -> datetime:
+        return now - timedelta(seconds=max(60, int(cycle_interval_seconds)))
+
+    @staticmethod
+    def is_interval_elapsed(sent_at: datetime | None, cycle_interval_seconds: int, now: datetime) -> bool:
+        if sent_at is None:
+            return True
+        required = max(60, int(cycle_interval_seconds))
+        return (now - sent_at).total_seconds() >= required
+
+    @staticmethod
+    def is_retry_exhausted(next_retry_count: int, max_retries: int) -> bool:
+        return next_retry_count > max_retries
 
     async def _ensure_user(self, user_id: int) -> None:
         async with db_session() as db:
@@ -460,7 +476,7 @@ class UserbotService:
         self,
         user_id: int,
         campaign_id: str,
-        target_groups: list[UserGroup],
+        target_groups: Sequence[UserGroup],
         available_account_ids: list[str],
         max_retries: int,
     ) -> None:
@@ -546,7 +562,7 @@ class UserbotService:
         cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60)))
 
         if config is not None:
-            sent_cutoff = utcnow() - timedelta(seconds=cycle_interval_seconds)
+            sent_cutoff = self.cycle_cutoff(utcnow(), cycle_interval_seconds)
             async with db_session() as db:
                 await db.execute(
                     update(BroadcastAttempt)
@@ -593,7 +609,7 @@ class UserbotService:
 
         available_ids = [a.id for a in active_accounts]
         await self.recover_stuck_inflight_attempts(user_id, campaign_id)
-        await self.seed_campaign_attempts_if_needed(user_id, campaign_id, target_groups, available_ids, max_retries)
+        await self.seed_campaign_attempts_if_needed(user_id, campaign_id, list(target_groups), available_ids, max_retries)
 
         target_by_id = {g.id: g for g in target_groups}
 
@@ -648,8 +664,7 @@ class UserbotService:
                 return
 
             if attempt.sent_at is not None:
-                elapsed_since_last_send = (utcnow() - attempt.sent_at).total_seconds()
-                if elapsed_since_last_send < cycle_interval_seconds:
+                if not self.is_interval_elapsed(attempt.sent_at, cycle_interval_seconds, utcnow()):
                     next_due = attempt.sent_at + timedelta(seconds=cycle_interval_seconds)
                     async with db_session() as db:
                         await db.execute(
@@ -675,7 +690,7 @@ class UserbotService:
                     slowmode_default_seconds=settings.telegram_slowmode_default_seconds,
                 )
                 retry_count = attempt.retry_count + 1
-                exhausted = retry_count > attempt.max_retries
+                exhausted = self.is_retry_exhausted(retry_count, attempt.max_retries)
 
                 if classified["retriable"] and not exhausted:
                     retry_delay_ms = compute_retry_delay_ms(
@@ -767,6 +782,7 @@ class UserbotService:
         await asyncio.gather(*worker_tasks, return_exceptions=True)
 
         min_pending_next_attempt = None
+        provider_constrained_pending = 0
         async with db_session() as db:
             rows = (
                 await db.execute(
@@ -786,6 +802,20 @@ class UserbotService:
                 )
             ).scalar_one_or_none()
 
+            provider_constrained_pending = int(
+                (
+                    await db.execute(
+                        select(func.count(BroadcastAttempt.id)).where(
+                            BroadcastAttempt.user_id == str(user_id),
+                            BroadcastAttempt.campaign_id == campaign_id,
+                            BroadcastAttempt.status == "pending",
+                            BroadcastAttempt.terminal_reason_code == "retriable-rate-limit",
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+
         summary = {"sent": 0, "failed": 0, "pending": 0, "inFlight": 0}
         for status, count in rows:
             if status == "sent":
@@ -802,6 +832,7 @@ class UserbotService:
             delta = (min_pending_next_attempt - utcnow()).total_seconds() * 1000
             next_due_in_ms = max(0, int(delta))
         summary["nextDueInMs"] = next_due_in_ms
+        summary["providerConstrainedDelay"] = provider_constrained_pending > 0
 
         return BroadcastExecutionResult(
             success=summary["failed"] == 0 and summary["pending"] == 0 and summary["inFlight"] == 0,

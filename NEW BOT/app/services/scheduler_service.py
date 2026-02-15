@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, or_, select
 
 from app.config import settings
 from app.db import db_session
@@ -63,14 +63,15 @@ class SchedulerService:
                 safe_interval = max(60, int(config.interval or 60))
                 run_slot = int(now.timestamp() // safe_interval)
                 delay = deterministic_jitter_ms(config.user_id, run_slot, settings.scheduler_jitter_max_ms)
-                await self.queue_service.enqueue_send(
+                queued_job_id = await self.queue_service.enqueue_send(
                     user_id=config.user_id,
                     message=config.message or "",
                     campaign_id=str(config.id),
                     queued_at=now.isoformat(),
                     delay_ms=delay,
                 )
-                queued_ids.append(config.id)
+                if queued_job_id is not None:
+                    queued_ids.append(config.id)
 
             if queued_ids:
                 async with db_session() as db:
@@ -84,7 +85,6 @@ class SchedulerService:
 
     async def get_due_configs(self, limit: int) -> list[BroadcastConfig]:
         now = datetime.utcnow()
-        early_factor = settings.scheduler_early_factor
         due: list[BroadcastConfig] = []
         async with db_session() as db:
             rows = (
@@ -98,6 +98,11 @@ class SchedulerService:
                             select(TelegramAccount.id).where(
                                 TelegramAccount.user_id == BroadcastConfig.user_id,
                                 TelegramAccount.is_active.is_(True),
+                                or_(
+                                    TelegramAccount.is_flood_wait.is_(False),
+                                    TelegramAccount.flood_wait_until.is_(None),
+                                    TelegramAccount.flood_wait_until <= now,
+                                ),
                             )
                         ),
                     )
@@ -109,14 +114,18 @@ class SchedulerService:
             for row in rows:
                 if row.interval is None:
                     continue
-                threshold_seconds = max(60, int(row.interval * early_factor))
-                if row.last_run_at is None:
-                    due.append(row)
-                    continue
-                elapsed = (now - row.last_run_at).total_seconds()
-                if elapsed >= threshold_seconds:
+                if self.is_due(row.last_run_at, int(row.interval), now=now):
                     due.append(row)
         return due
+
+    @staticmethod
+    def is_due(last_run_at: datetime | None, interval_seconds: int, now: datetime | None = None) -> bool:
+        if last_run_at is None:
+            return True
+        reference_now = now or datetime.utcnow()
+        threshold_seconds = max(60, int(interval_seconds * settings.scheduler_early_factor))
+        elapsed = (reference_now - last_run_at).total_seconds()
+        return elapsed >= threshold_seconds
 
     async def set_config(
         self,
