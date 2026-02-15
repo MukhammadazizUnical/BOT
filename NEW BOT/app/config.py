@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     remote_groups_failure_cooldown_ms: int = 120000
 
     scheduler_check_interval_ms: int = 5000
-    scheduler_early_factor: float = 0.96
+    scheduler_early_factor: float = 1.0
     scheduler_max_due_per_tick: int = 500
     scheduler_jitter_max_ms: int = 15000
 

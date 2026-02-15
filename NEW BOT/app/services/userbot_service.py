@@ -478,19 +478,6 @@ class UserbotService:
             if total_existing > 0 and active_existing > 0:
                 return
 
-            if total_existing > 0 and active_existing == 0:
-                await db.execute(
-                    update(BroadcastAttempt)
-                    .where(BroadcastAttempt.user_id == str(user_id), BroadcastAttempt.campaign_id == campaign_id)
-                    .values(
-                        status="pending",
-                        retry_count=0,
-                        next_attempt_at=utcnow(),
-                        terminal_reason_code=None,
-                        last_error=None,
-                    )
-                )
-
             for idx, group in enumerate(sorted(target_groups, key=lambda x: x.id)):
                 account_id = available_account_ids[idx % len(available_account_ids)]
                 idem = build_attempt_idempotency_key(campaign_id, group.id)
@@ -576,6 +563,23 @@ class UserbotService:
                         next_attempt_at=utcnow(),
                         started_at=None,
                         sent_at=None,
+                        terminal_reason_code=None,
+                        last_error=None,
+                    )
+                )
+                await db.execute(
+                    update(BroadcastAttempt)
+                    .where(
+                        BroadcastAttempt.user_id == str(user_id),
+                        BroadcastAttempt.campaign_id == campaign_id,
+                        BroadcastAttempt.status == "failed-terminal",
+                        BroadcastAttempt.updated_at <= sent_cutoff,
+                    )
+                    .values(
+                        status="pending",
+                        retry_count=0,
+                        next_attempt_at=utcnow(),
+                        started_at=None,
                         terminal_reason_code=None,
                         last_error=None,
                     )

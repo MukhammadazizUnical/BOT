@@ -49,8 +49,8 @@ class BroadcastQueueService:
         return f"bc-sched-{campaign_id}-{user_id}-{run_slot}"
 
     @staticmethod
-    def continuation_job_id(user_id: str, campaign_id: str) -> str:
-        return f"bc-cont-{campaign_id}-{user_id}"
+    def continuation_job_id(user_id: str, campaign_id: str, due_slot_minute: int) -> str:
+        return f"bc-cont-{campaign_id}-{user_id}-{due_slot_minute}"
 
     def continuation_delay_ms(self) -> int:
         jitter = random.randint(0, max(0, settings.broadcast_continuation_jitter_ms))
