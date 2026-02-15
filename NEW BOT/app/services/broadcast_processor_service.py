@@ -7,7 +7,7 @@ from app.models import BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.services.userbot_service import UserbotService
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 
 class BroadcastProcessorService:
@@ -104,6 +104,17 @@ class BroadcastProcessorService:
             }
 
         try:
+            if campaign_db_id is not None:
+                async with db_session() as db:
+                    await db.execute(
+                        update(BroadcastConfig)
+                        .where(
+                            BroadcastConfig.user_id == user_id,
+                            BroadcastConfig.id == campaign_db_id,
+                        )
+                        .values(last_run_at=started_at)
+                    )
+
             result = await self.userbot_service.broadcast_message(
                 user_id=int(user_id),
                 message_text=message,
