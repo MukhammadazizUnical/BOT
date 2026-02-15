@@ -21,3 +21,15 @@ def test_slowmode_without_retry_after_uses_default_seconds():
 def test_flood_message_is_retriable():
     classified = classify_telegram_error("FLOOD_WAIT_120")
     assert classified["retriable"] is True
+
+
+def test_slowmode_wait_seconds_are_parsed_from_message():
+    classified = classify_telegram_error("Telegram says: [420 SLOWMODE_WAIT_3]")
+    assert classified["retriable"] is True
+    assert classified["retry_after_seconds"] == 3
+
+
+def test_flood_wait_seconds_are_parsed_from_message():
+    classified = classify_telegram_error("FLOOD_WAIT_17")
+    assert classified["retriable"] is True
+    assert classified["retry_after_seconds"] == 17

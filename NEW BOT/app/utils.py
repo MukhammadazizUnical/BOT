@@ -35,6 +35,12 @@ def classify_telegram_error(error: Exception | str | object, slowmode_default_se
             value = int(match.group(1))
             retry_after_seconds = value if value > 0 else None
 
+    if retry_after_seconds is None:
+        match = re.search(r"(?:SLOWMODE_WAIT|FLOOD_WAIT)_([0-9]+)", msg)
+        if match:
+            value = int(match.group(1))
+            retry_after_seconds = value if value > 0 else None
+
     if retry_after_seconds is None and "SLOWMODE_WAIT" in msg:
         retry_after_seconds = max(1, int(slowmode_default_seconds))
 
