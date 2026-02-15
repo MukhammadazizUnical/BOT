@@ -35,14 +35,6 @@ class BroadcastProcessorService:
         queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
         campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
 
-        def parse_iso(value: str) -> datetime | None:
-            try:
-                normalized = value.replace("Z", "+00:00")
-                dt = datetime.fromisoformat(normalized)
-                return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
-            except Exception:
-                return None
-
         if campaign_db_id is not None:
             async with db_session() as db:
                 cfg = (
@@ -56,10 +48,6 @@ class BroadcastProcessorService:
 
             if not cfg or not cfg.is_active:
                 return {"success": True, "count": 0, "errors": [], "error": "inactive-campaign"}
-
-            queued_dt = parse_iso(queued_at)
-            if queued_dt and cfg.updated_at and queued_dt < cfg.updated_at:
-                return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
 
             if (cfg.message or "") != str(message):
                 return {"success": True, "count": 0, "errors": [], "error": "stale-payload"}
