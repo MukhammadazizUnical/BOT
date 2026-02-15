@@ -38,6 +38,7 @@ class BroadcastProcessorService:
         message = payload.get("message", "")
         campaign_id = payload.get("campaignId", "")
         queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
+        payload_interval_seconds = int(payload.get("intervalSeconds") or 0)
         started_at = datetime.utcnow()
         campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
 
@@ -84,6 +85,18 @@ class BroadcastProcessorService:
                     "errors": [],
                     "error": "stale-payload",
                     "outcome": "stale-message",
+                    "scheduledAt": queued_at,
+                    "startedAt": started_at.isoformat(),
+                    "lagMs": lag_ms,
+                }
+
+            if payload_interval_seconds > 0 and int(cfg.interval or 0) != payload_interval_seconds:
+                return {
+                    "success": True,
+                    "count": 0,
+                    "errors": [],
+                    "error": "stale-payload",
+                    "outcome": "stale-interval",
                     "scheduledAt": queued_at,
                     "startedAt": started_at.isoformat(),
                     "lagMs": lag_ms,
@@ -138,6 +151,7 @@ class BroadcastProcessorService:
                         message=message,
                         campaign_id=campaign_id,
                         queued_at=queued_at,
+                        interval_seconds=payload_interval_seconds if payload_interval_seconds > 0 else None,
                         delay_ms=delay,
                     )
 

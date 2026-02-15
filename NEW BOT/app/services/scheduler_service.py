@@ -68,6 +68,7 @@ class SchedulerService:
                     message=config.message or "",
                     campaign_id=str(config.id),
                     queued_at=now.isoformat(),
+                    interval_seconds=int(config.interval or 0),
                     delay_ms=delay,
                 )
                 if queued_job_id is not None:

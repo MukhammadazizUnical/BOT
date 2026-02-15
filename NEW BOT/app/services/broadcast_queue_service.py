@@ -23,6 +23,7 @@ class BroadcastQueueService:
         message: str,
         campaign_id: str,
         queued_at: str,
+        interval_seconds: int | None = None,
         delay_ms: int = 0,
         job_id: str | None = None,
     ) -> str | None:
@@ -36,6 +37,7 @@ class BroadcastQueueService:
                 "message": message,
                 "campaignId": campaign_id,
                 "queuedAt": queued_at,
+                "intervalSeconds": int(interval_seconds) if interval_seconds is not None else None,
             },
             _defer_by=_defer_by,
             _job_id=resolved_job_id,
