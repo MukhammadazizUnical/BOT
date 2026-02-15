@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from app.services.broadcast_queue_service import BroadcastQueueService
 from app.services.scheduler_service import SchedulerService
 
 
@@ -37,4 +38,12 @@ def test_deterministic_jitter_is_stable():
     c = deterministic_jitter_ms("124", 99, 15000)
     assert a == b
     assert 0 <= a <= 15000
+    assert a != c
+
+
+def test_deterministic_scheduler_job_id_is_stable():
+    a = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=111)
+    b = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=111)
+    c = BroadcastQueueService.scheduled_job_id(user_id="42", campaign_id="7", run_slot=112)
+    assert a == b
     assert a != c

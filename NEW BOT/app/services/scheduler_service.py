@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import exists, select
 
 from app.config import settings
 from app.db import db_session
-from app.models import BroadcastConfig
+from app.models import BroadcastConfig, TelegramAccount
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.utils import deterministic_jitter_ms
@@ -69,6 +69,11 @@ class SchedulerService:
                     campaign_id=str(config.id),
                     queued_at=now.isoformat(),
                     delay_ms=delay,
+                    job_id=self.queue_service.scheduled_job_id(
+                        user_id=config.user_id,
+                        campaign_id=str(config.id),
+                        run_slot=run_slot,
+                    ),
                 )
                 queued_ids.append(config.id)
 
@@ -94,6 +99,12 @@ class SchedulerService:
                         BroadcastConfig.is_active.is_(True),
                         BroadcastConfig.message.is_not(None),
                         BroadcastConfig.interval.is_not(None),
+                        exists(
+                            select(TelegramAccount.id).where(
+                                TelegramAccount.user_id == BroadcastConfig.user_id,
+                                TelegramAccount.is_active.is_(True),
+                            )
+                        ),
                     )
                     .order_by(BroadcastConfig.last_run_at.asc().nullsfirst())
                     .limit(max(1, limit))
