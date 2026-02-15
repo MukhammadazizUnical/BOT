@@ -63,20 +63,14 @@ class SchedulerService:
                 safe_interval = max(60, int(config.interval or 60))
                 run_slot = int(now.timestamp() // safe_interval)
                 delay = deterministic_jitter_ms(config.user_id, run_slot, settings.scheduler_jitter_max_ms)
-                queued_job_id = await self.queue_service.enqueue_send(
+                await self.queue_service.enqueue_send(
                     user_id=config.user_id,
                     message=config.message or "",
                     campaign_id=str(config.id),
                     queued_at=now.isoformat(),
                     delay_ms=delay,
-                    job_id=self.queue_service.scheduled_job_id(
-                        user_id=config.user_id,
-                        campaign_id=str(config.id),
-                        run_slot=run_slot,
-                    ),
                 )
-                if queued_job_id is not None:
-                    queued_ids.append(config.id)
+                queued_ids.append(config.id)
 
             if queued_ids:
                 async with db_session() as db:

@@ -60,7 +60,6 @@ async def test_continuation_is_enqueued_for_deferred_batch(monkeypatch):
     assert len(userbot.calls) == 1
     assert len(queue.calls) == 1
     assert queue.calls[0]["campaign_id"] == "cmp-1"
-    assert queue.calls[0]["job_id"].startswith("bc-cont-cmp-1-10-")
 
 
 @pytest.mark.asyncio

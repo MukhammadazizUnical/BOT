@@ -88,19 +88,12 @@ class BroadcastProcessorService:
                         self.queue_service.continuation_delay_ms(),
                         int(summary.get("nextDueInMs", 0) or 0),
                     )
-                    now_ms = int(datetime.utcnow().timestamp() * 1000)
-                    due_slot_minute = (now_ms + delay) // 60000
                     await self.queue_service.enqueue_send(
                         user_id=user_id,
                         message=message,
                         campaign_id=campaign_id,
                         queued_at=queued_at,
                         delay_ms=delay,
-                        job_id=BroadcastQueueService.continuation_job_id(
-                            user_id=user_id,
-                            campaign_id=campaign_id,
-                            due_slot_minute=int(due_slot_minute),
-                        ),
                     )
 
             summary = result.summary or {}
