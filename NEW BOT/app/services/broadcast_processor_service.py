@@ -117,7 +117,15 @@ class BroadcastProcessorService:
             }
 
         try:
-            if campaign_db_id is not None:
+            result = await self.userbot_service.broadcast_message(
+                user_id=int(user_id),
+                message_text=message,
+                campaign_id=campaign_id,
+                queued_at=queued_at,
+                max_attempts_per_run=max(1, settings.broadcast_attempts_per_job),
+            )
+
+            if campaign_db_id is not None and int(result.count or 0) > 0:
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastConfig)
@@ -127,14 +135,6 @@ class BroadcastProcessorService:
                         )
                         .values(last_run_at=started_at)
                     )
-
-            result = await self.userbot_service.broadcast_message(
-                user_id=int(user_id),
-                message_text=message,
-                campaign_id=campaign_id,
-                queued_at=queued_at,
-                max_attempts_per_run=max(1, settings.broadcast_attempts_per_job),
-            )
 
             if not result.success:
                 summary = result.summary or {}
