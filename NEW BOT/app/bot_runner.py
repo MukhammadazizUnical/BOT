@@ -345,9 +345,14 @@ async def render_admin_panel(
         else:
             total_for_filter = total
 
-        query = select(AllowedUser).order_by(AllowedUser.created_at.desc()).offset(page * per_page).limit(per_page)
+        query = select(AllowedUser)
         if where_clause is not None:
             query = query.where(where_clause)
+        if filter_name == "requested":
+            query = query.order_by(AllowedUser.expires_at.desc(), AllowedUser.created_at.desc())
+        else:
+            query = query.order_by(AllowedUser.created_at.desc())
+        query = query.offset(page * per_page).limit(per_page)
         users = (await db.execute(query)).scalars().all()
 
     total_pages = max(1, (total_for_filter + per_page - 1) // per_page)
