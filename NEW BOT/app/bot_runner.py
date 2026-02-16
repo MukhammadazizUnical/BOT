@@ -118,7 +118,7 @@ def interval_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="3 daqiqa ⏱️", callback_data="set_interval_3"),
-                InlineKeyboardButton(text="5 daqiqa ⏱️", callback_data="set_interval_5"),
+                InlineKeyboardButton(text="5 daqiqa (+1m) ⏱️", callback_data="set_interval_5"),
             ],
             [
                 InlineKeyboardButton(text="10 daqiqa ⏱️", callback_data="set_interval_10"),
@@ -1159,6 +1159,7 @@ async def on_text(message: Message):
 
 async def on_interval_callback(callback: CallbackQuery):
     minutes = int(callback.data.split("_")[-1])
+    effective_minutes = minutes + 1 if minutes == 5 else minutes
     user_id = callback.from_user.id
     msg = broadcast_message_text.get(user_id)
     if not msg:
@@ -1171,10 +1172,14 @@ async def on_interval_callback(callback: CallbackQuery):
         await callback.message.answer("Xabar topilmadi")
         await callback.answer()
         return
-    await scheduler_service.set_config(str(user_id), message=msg, interval=minutes * 60, is_active=True)
+    await scheduler_service.set_config(str(user_id), message=msg, interval=effective_minutes * 60, is_active=True)
     await save_message_history_if_new(user_id, msg)
     user_states[user_id] = UserState.IDLE
-    await show_menu_callback(callback, f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa")
+    if effective_minutes != minutes:
+        notice = f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa (+1 daqiqa safety)"
+    else:
+        notice = f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa"
+    await show_menu_callback(callback, notice)
     await callback.answer()
 
 
