@@ -559,7 +559,8 @@ class UserbotService:
                 )
             ).scalars().all()
 
-        cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60)))
+        safety_seconds = max(0, int(settings.broadcast_interval_safety_seconds))
+        cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60))) + safety_seconds
 
         if config is not None:
             sent_cutoff = self.cycle_cutoff(utcnow(), cycle_interval_seconds)

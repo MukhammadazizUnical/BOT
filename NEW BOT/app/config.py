@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     broadcast_attempts_per_job: int = 2
     broadcast_continuation_base_delay_ms: int = 1500
     broadcast_continuation_jitter_ms: int = 1500
+    broadcast_interval_safety_seconds: int = 15
 
     telegram_per_account_mpm: int = 6
     telegram_per_account_min_delay_ms: int = 3500

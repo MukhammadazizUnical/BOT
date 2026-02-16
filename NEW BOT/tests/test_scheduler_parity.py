@@ -42,9 +42,18 @@ def test_deterministic_jitter_is_stable():
 
 def test_is_due_respects_five_minute_boundary(monkeypatch):
     monkeypatch.setattr("app.services.scheduler_service.settings.scheduler_early_factor", 1.0, raising=False)
+    monkeypatch.setattr("app.services.scheduler_service.settings.broadcast_interval_safety_seconds", 0, raising=False)
     now = datetime.utcnow()
     assert SchedulerService.is_due(now - timedelta(seconds=299), 300, now=now) is False
     assert SchedulerService.is_due(now - timedelta(seconds=300), 300, now=now) is True
+
+
+def test_is_due_applies_interval_safety_seconds(monkeypatch):
+    monkeypatch.setattr("app.services.scheduler_service.settings.scheduler_early_factor", 1.0, raising=False)
+    monkeypatch.setattr("app.services.scheduler_service.settings.broadcast_interval_safety_seconds", 15, raising=False)
+    now = datetime.utcnow()
+    assert SchedulerService.is_due(now - timedelta(seconds=314), 300, now=now) is False
+    assert SchedulerService.is_due(now - timedelta(seconds=315), 300, now=now) is True
 
 
 def test_multi_user_due_window_has_spread_jitter():

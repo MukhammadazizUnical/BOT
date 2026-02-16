@@ -124,7 +124,8 @@ class SchedulerService:
         if last_run_at is None:
             return True
         reference_now = now or datetime.utcnow()
-        threshold_seconds = max(60, int(interval_seconds * settings.scheduler_early_factor))
+        safety_seconds = max(0, int(settings.broadcast_interval_safety_seconds))
+        threshold_seconds = max(60, int(interval_seconds * settings.scheduler_early_factor)) + safety_seconds
         elapsed = (reference_now - last_run_at).total_seconds()
         return elapsed >= threshold_seconds
 
