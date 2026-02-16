@@ -19,6 +19,10 @@ class AccessService:
         if self.normalize_username(username) in self.super_admins:
             return True, None
 
+        owner = (settings.owner_user_id or "").strip()
+        if owner and str(tg_user_id) == owner:
+            return True, None
+
         async with db_session() as db:
             now = datetime.utcnow()
             user = await db.get(AllowedUser, str(tg_user_id))
@@ -44,14 +48,7 @@ class AccessService:
             if username and user.username != username:
                 user.username = username
 
-            owner = (settings.owner_user_id or "").strip()
-            if owner and str(tg_user_id) != owner:
-                if user.expires_at is None or user.expires_at > now:
-                    user.expires_at = now
-                return False, "⛔ Ruxsat yo'q. Admin ga murojaat qiling: @Mr_usmonovvvv"
-
             if user.expires_at and now > user.expires_at:
-                user.expires_at = now
                 return False, "⚠️ Obuna vaqtingiz tugagan. Admin ga murojaat qiling: @Mr_usmonovvvv"
 
         return True, None
