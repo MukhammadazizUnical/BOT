@@ -145,6 +145,36 @@ async def test_partial_delivery_with_some_failed_is_not_hard_failure(monkeypatch
     assert out["count"] == 5
 
 
+@pytest.mark.asyncio
+async def test_continuation_polls_30s_when_provider_constrained(monkeypatch):
+    monkeypatch.setattr(settings, "bot_role", "worker", raising=False)
+    result = BroadcastExecutionResult(
+        success=False,
+        count=7,
+        errors=[],
+        error=None,
+        summary={
+            "failed": 1,
+            "pending": 1,
+            "inFlight": 0,
+            "sent": 7,
+            "providerConstrainedDelay": True,
+            "nextDueInMs": 180000,
+        },
+    )
+    userbot = DummyUserbot(result)
+    queue = DummyQueue()
+    service = BroadcastProcessorService(userbot, queue)
+    monkeypatch.setattr(service, "acquire_user_lock", lambda *args, **kwargs: _async_true())
+    monkeypatch.setattr(service, "release_user_lock", lambda *args, **kwargs: _async_none())
+
+    out = await service.process({"userId": "10", "message": "hello", "campaignId": "cmp-1", "queuedAt": "2026-01-01T00:00:00Z"})
+
+    assert out["success"] is True
+    assert len(queue.calls) == 1
+    assert queue.calls[0]["delay_ms"] == 30000
+
+
 async def _async_true():
     return True
 

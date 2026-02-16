@@ -140,12 +140,14 @@ class BroadcastProcessorService:
                 summary = result.summary or {}
                 pending = summary.get("pending", 0)
                 in_flight = summary.get("inFlight", 0)
-                failed = summary.get("failed", 0)
-                if not result.error and (pending > 0 or in_flight > 0) and failed == 0:
-                    delay = max(
-                        self.queue_service.continuation_delay_ms(),
-                        int(summary.get("nextDueInMs", 0) or 0),
-                    )
+                if not result.error and (pending > 0 or in_flight > 0):
+                    next_due_ms = int(summary.get("nextDueInMs", 0) or 0)
+                    if bool(summary.get("providerConstrainedDelay", False)):
+                        # When Telegram slowmode/flood gates some targets, poll more frequently
+                        # so we retry near the real due time instead of waiting full campaign interval.
+                        delay = min(max(5000, next_due_ms if next_due_ms > 0 else 5000), 30000)
+                    else:
+                        delay = max(self.queue_service.continuation_delay_ms(), next_due_ms)
                     await self.queue_service.enqueue_send(
                         user_id=user_id,
                         message=message,
