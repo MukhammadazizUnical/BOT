@@ -11,13 +11,17 @@ from sqlalchemy import select, update
 
 
 class BroadcastProcessorService:
-    def __init__(self, userbot_service: UserbotService, queue_service: BroadcastQueueService):
+    def __init__(
+        self, userbot_service: UserbotService, queue_service: BroadcastQueueService
+    ):
         self.userbot_service = userbot_service
         self.queue_service = queue_service
 
     async def acquire_user_lock(self, user_id: str, token: str) -> bool:
         key = f"broadcast:user-lock:{user_id}"
-        result = await redis_client.set(key, token, px=max(60000, settings.broadcast_user_lock_ttl_ms), nx=True)
+        result = await redis_client.set(
+            key, token, px=max(60000, settings.broadcast_user_lock_ttl_ms), nx=True
+        )
         return bool(result)
 
     async def release_user_lock(self, user_id: str, token: str) -> None:
@@ -58,13 +62,17 @@ class BroadcastProcessorService:
         if campaign_db_id is not None:
             async with db_session() as db:
                 cfg = (
-                    await db.execute(
-                        select(BroadcastConfig).where(
-                            BroadcastConfig.user_id == user_id,
-                            BroadcastConfig.id == campaign_db_id,
+                    (
+                        await db.execute(
+                            select(BroadcastConfig).where(
+                                BroadcastConfig.user_id == user_id,
+                                BroadcastConfig.id == campaign_db_id,
+                            )
                         )
                     )
-                ).scalars().first()
+                    .scalars()
+                    .first()
+                )
 
             if not cfg or not cfg.is_active:
                 return {
@@ -90,7 +98,10 @@ class BroadcastProcessorService:
                     "lagMs": lag_ms,
                 }
 
-            if payload_interval_seconds > 0 and int(cfg.interval or 0) != payload_interval_seconds:
+            if (
+                payload_interval_seconds > 0
+                and int(cfg.interval or 0) != payload_interval_seconds
+            ):
                 return {
                     "success": True,
                     "count": 0,
@@ -124,6 +135,9 @@ class BroadcastProcessorService:
                 queued_at=queued_at,
                 max_attempts_per_run=max(1, settings.broadcast_attempts_per_job),
             )
+            continuation_enqueued = False
+            continuation_delay_ms = None
+            continuation_reason = None
 
             if campaign_db_id is not None and int(result.count or 0) > 0:
                 async with db_session() as db:
@@ -142,20 +156,34 @@ class BroadcastProcessorService:
                 in_flight = summary.get("inFlight", 0)
                 if not result.error and (pending > 0 or in_flight > 0):
                     next_due_ms = int(summary.get("nextDueInMs", 0) or 0)
+                    ready_pending_count = int(summary.get("readyPendingCount", 0) or 0)
                     if bool(summary.get("providerConstrainedDelay", False)):
-                        # When Telegram slowmode/flood gates some targets, poll more frequently
-                        # so we retry near the real due time instead of waiting full campaign interval.
-                        delay = min(max(5000, next_due_ms if next_due_ms > 0 else 5000), 30000)
+                        if ready_pending_count > 0:
+                            delay = self.queue_service.continuation_delay_ms()
+                            continuation_reason = "ready-pending-fast"
+                        elif next_due_ms > 0:
+                            delay = next_due_ms
+                            continuation_reason = "exact-next-due"
+                        else:
+                            delay = self.queue_service.continuation_delay_ms()
+                            continuation_reason = "provider-fallback"
                     else:
-                        delay = max(self.queue_service.continuation_delay_ms(), next_due_ms)
+                        delay = max(
+                            self.queue_service.continuation_delay_ms(), next_due_ms
+                        )
+                        continuation_reason = "default-deferred"
                     await self.queue_service.enqueue_send(
                         user_id=user_id,
                         message=message,
                         campaign_id=campaign_id,
                         queued_at=queued_at,
-                        interval_seconds=payload_interval_seconds if payload_interval_seconds > 0 else None,
+                        interval_seconds=payload_interval_seconds
+                        if payload_interval_seconds > 0
+                        else None,
                         delay_ms=delay,
                     )
+                    continuation_enqueued = True
+                    continuation_delay_ms = delay
 
             summary = result.summary or {}
             failed = int(summary.get("failed", 0) or 0)
@@ -181,6 +209,9 @@ class BroadcastProcessorService:
                 "error": result.error,
                 "summary": summary,
                 "outcome": outcome,
+                "continuationEnqueued": continuation_enqueued,
+                "continuationDelayMs": continuation_delay_ms,
+                "continuationReason": continuation_reason,
                 "scheduledAt": queued_at,
                 "startedAt": started_at.isoformat(),
                 "lagMs": lag_ms,

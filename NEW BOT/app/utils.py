@@ -4,7 +4,13 @@ import re
 from datetime import datetime, timedelta
 
 
-RETRIABLE_ERROR_TOKENS = ("FLOOD_WAIT", "FLOOD", "SLOWMODE_WAIT", "TIMEOUT", "ETIMEDOUT")
+RETRIABLE_ERROR_TOKENS = (
+    "FLOOD_WAIT",
+    "FLOOD",
+    "SLOWMODE_WAIT",
+    "TIMEOUT",
+    "ETIMEDOUT",
+)
 TERMINAL_REASON_TOKENS = (
     "CHAT_WRITE_FORBIDDEN",
     "USER_BANNED_IN_CHANNEL",
@@ -23,11 +29,23 @@ def normalize_error_message(error: Exception | str | object) -> str:
     return str(error)
 
 
-def classify_telegram_error(error: Exception | str | object, slowmode_default_seconds: int = 300) -> dict:
+def classify_telegram_error(
+    error: Exception | str | object, slowmode_default_seconds: int = 300
+) -> dict:
     msg = normalize_error_message(error).upper()
-    retry_after_seconds = getattr(error, "seconds", None)
-    if isinstance(retry_after_seconds, int) and retry_after_seconds <= 0:
-        retry_after_seconds = None
+    retry_after_seconds = None
+
+    for attr in ("seconds", "value"):
+        raw_value = getattr(error, attr, None)
+        parsed_value = None
+        if isinstance(raw_value, int):
+            parsed_value = raw_value
+        elif isinstance(raw_value, str) and raw_value.isdigit():
+            parsed_value = int(raw_value)
+
+        if isinstance(parsed_value, int) and parsed_value > 0:
+            retry_after_seconds = parsed_value
+            break
 
     if retry_after_seconds is None:
         match = re.search(r"WAIT OF\s+(\d+)\s+SECONDS", msg)
@@ -73,7 +91,7 @@ def compute_retry_delay_ms(
     max_delay_ms: int,
     jitter_ratio: float,
 ) -> int:
-    exponential = min(max_delay_ms, base_delay_ms * (2 ** retry_count))
+    exponential = min(max_delay_ms, base_delay_ms * (2**retry_count))
     provider_delay = (retry_after_seconds or 0) * 1000
 
     # Provider-mandated wait (e.g. slow mode / flood wait) must not be clamped

@@ -19,7 +19,13 @@ from sqlalchemy import and_, func, or_, select, update
 
 from app.config import settings
 from app.db import db_session
-from app.models import BroadcastAttempt, BroadcastConfig, TelegramAccount, User, UserGroup
+from app.models import (
+    BroadcastAttempt,
+    BroadcastConfig,
+    TelegramAccount,
+    User,
+    UserGroup,
+)
 from app.utils import (
     build_attempt_idempotency_key,
     classify_telegram_error,
@@ -60,7 +66,9 @@ class UserbotService:
         return now - timedelta(seconds=max(60, int(cycle_interval_seconds)))
 
     @staticmethod
-    def is_interval_elapsed(sent_at: datetime | None, cycle_interval_seconds: int, now: datetime) -> bool:
+    def is_interval_elapsed(
+        sent_at: datetime | None, cycle_interval_seconds: int, now: datetime
+    ) -> bool:
         if sent_at is None:
             return True
         required = max(60, int(cycle_interval_seconds))
@@ -88,7 +96,9 @@ class UserbotService:
         digits = "".join(ch for ch in value if ch.isdigit())
         return digits
 
-    def _normalize_remote_group_id(self, chat_id: int | str, chat_type: str | None) -> str:
+    def _normalize_remote_group_id(
+        self, chat_id: int | str, chat_type: str | None
+    ) -> str:
         raw = str(chat_id)
         type_value = str(chat_type or "").lower()
         is_supergroup = type_value == "supergroup" or type_value.endswith(".supergroup")
@@ -165,7 +175,9 @@ class UserbotService:
     async def complete_login(self, user_id: int, phone: str, code: str) -> dict:
         temp = self.login_temp.get(user_id)
         if not temp:
-            self.logger.warning("complete_login missing temp session user_id=%s", user_id)
+            self.logger.warning(
+                "complete_login missing temp session user_id=%s", user_id
+            )
             return {
                 "success": False,
                 "error": "Login session not found",
@@ -195,9 +207,13 @@ class UserbotService:
             if not normalized_code:
                 return {"success": False, "error": "Kod noto'g'ri formatda"}
 
-            me = await client.sign_in(normalized_phone, temp["phone_code_hash"], normalized_code)
+            me = await client.sign_in(
+                normalized_phone, temp["phone_code_hash"], normalized_code
+            )
             session_string = await client.export_session_string()
-            await self._save_telegram_account(user_id, normalized_phone, me, session_string)
+            await self._save_telegram_account(
+                user_id, normalized_phone, me, session_string
+            )
             self.login_temp.pop(user_id, None)
             if transient_client:
                 await client.disconnect()
@@ -270,7 +286,9 @@ class UserbotService:
                 await client.connect()
             me = await client.check_password(password)
             session_string = await client.export_session_string()
-            await self._save_telegram_account(user_id, normalized_phone, me, session_string)
+            await self._save_telegram_account(
+                user_id, normalized_phone, me, session_string
+            )
             self.login_temp.pop(user_id, None)
             if transient_client:
                 await client.disconnect()
@@ -289,9 +307,15 @@ class UserbotService:
             if transient_client and disconnect_transient:
                 await client.disconnect()
 
-    async def _save_telegram_account(self, user_id: int, phone: str, me, session_string: str) -> None:
+    async def _save_telegram_account(
+        self, user_id: int, phone: str, me, session_string: str
+    ) -> None:
         async with db_session() as db:
-            row = (await db.execute(select(TelegramAccount).where(TelegramAccount.phone_number == phone))).scalar_one_or_none()
+            row = (
+                await db.execute(
+                    select(TelegramAccount).where(TelegramAccount.phone_number == phone)
+                )
+            ).scalar_one_or_none()
             if row:
                 row.session_string = session_string
                 row.user_id = str(user_id)
@@ -316,7 +340,9 @@ class UserbotService:
                     )
                 )
 
-    async def get_connected_client(self, user_id: int, account_id: str) -> Client | None:
+    async def get_connected_client(
+        self, user_id: int, account_id: str
+    ) -> Client | None:
         async with self.client_lock:
             cached = self.connected_clients.get(account_id)
             if cached:
@@ -388,11 +414,16 @@ class UserbotService:
             self.remote_groups_last_fetch_attempt[key] = now_ms
             try:
                 groups = await self._fetch_remote_groups(user_id)
-                self.remote_groups_cache[key] = {"fetched_at": int(datetime.utcnow().timestamp() * 1000), "groups": groups}
+                self.remote_groups_cache[key] = {
+                    "fetched_at": int(datetime.utcnow().timestamp() * 1000),
+                    "groups": groups,
+                }
                 self.remote_groups_last_fetch_failure.pop(key, None)
                 return groups
             except Exception:
-                self.remote_groups_last_fetch_failure[key] = int(datetime.utcnow().timestamp() * 1000)
+                self.remote_groups_last_fetch_failure[key] = int(
+                    datetime.utcnow().timestamp() * 1000
+                )
                 return cached["groups"] if cached else []
             finally:
                 self.remote_groups_inflight.pop(key, None)
@@ -404,15 +435,19 @@ class UserbotService:
     async def _fetch_remote_groups(self, user_id: int) -> list[dict]:
         async with db_session() as db:
             account = (
-                await db.execute(
-                    select(TelegramAccount)
-                    .where(
-                        TelegramAccount.user_id == str(user_id),
-                        TelegramAccount.is_active.is_(True),
+                (
+                    await db.execute(
+                        select(TelegramAccount)
+                        .where(
+                            TelegramAccount.user_id == str(user_id),
+                            TelegramAccount.is_active.is_(True),
+                        )
+                        .order_by(TelegramAccount.created_at.desc())
                     )
-                    .order_by(TelegramAccount.created_at.desc())
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
 
         if not account:
             return []
@@ -430,7 +465,9 @@ class UserbotService:
                 continue
             type_value = str(chat.type).lower()
             is_group = type_value == "group" or type_value.endswith(".group")
-            is_supergroup = type_value == "supergroup" or type_value.endswith(".supergroup")
+            is_supergroup = type_value == "supergroup" or type_value.endswith(
+                ".supergroup"
+            )
             if not (is_group or is_supergroup):
                 continue
             gid = self._normalize_remote_group_id(chat.id, chat.type)
@@ -447,7 +484,9 @@ class UserbotService:
             )
         return result
 
-    async def send_message_to_user(self, user_id: int, telegram_account_id: str, to: str, message: str) -> dict:
+    async def send_message_to_user(
+        self, user_id: int, telegram_account_id: str, to: str, message: str
+    ) -> dict:
         client = await self.get_connected_client(user_id, telegram_account_id)
         if not client:
             return {"success": False, "error": "No active account"}
@@ -457,7 +496,9 @@ class UserbotService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def recover_stuck_inflight_attempts(self, user_id: int, campaign_id: str) -> int:
+    async def recover_stuck_inflight_attempts(
+        self, user_id: int, campaign_id: str
+    ) -> int:
         cutoff = now_plus_ms(-settings.broadcast_inflight_stuck_ms)
         async with db_session() as db:
             result = await db.execute(
@@ -468,7 +509,11 @@ class UserbotService:
                     BroadcastAttempt.status == "in-flight",
                     BroadcastAttempt.started_at <= cutoff,
                 )
-                .values(status="pending", next_attempt_at=utcnow(), last_error="Recovered stuck in-flight")
+                .values(
+                    status="pending",
+                    next_attempt_at=utcnow(),
+                    last_error="Recovered stuck in-flight",
+                )
             )
             return result.rowcount or 0
 
@@ -484,12 +529,17 @@ class UserbotService:
             rows = (
                 await db.execute(
                     select(BroadcastAttempt.status, func.count(BroadcastAttempt.id))
-                    .where(BroadcastAttempt.user_id == str(user_id), BroadcastAttempt.campaign_id == campaign_id)
+                    .where(
+                        BroadcastAttempt.user_id == str(user_id),
+                        BroadcastAttempt.campaign_id == campaign_id,
+                    )
                     .group_by(BroadcastAttempt.status)
                 )
             ).all()
             total_existing = sum(r[1] for r in rows)
-            active_existing = sum(r[1] for r in rows if r[0] in {"pending", "in-flight"})
+            active_existing = sum(
+                r[1] for r in rows if r[0] in {"pending", "in-flight"}
+            )
 
             if total_existing > 0 and active_existing > 0:
                 return
@@ -498,7 +548,11 @@ class UserbotService:
                 account_id = available_account_ids[idx % len(available_account_ids)]
                 idem = build_attempt_idempotency_key(campaign_id, group.id)
                 exists = (
-                    await db.execute(select(BroadcastAttempt.id).where(BroadcastAttempt.idempotency_key == idem))
+                    await db.execute(
+                        select(BroadcastAttempt.id).where(
+                            BroadcastAttempt.idempotency_key == idem
+                        )
+                    )
                 ).scalar_one_or_none()
                 if exists:
                     continue
@@ -538,29 +592,54 @@ class UserbotService:
         async with db_session() as db:
             campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
             config = (
-                await db.execute(
-                    select(BroadcastConfig).where(BroadcastConfig.user_id == str(user_id), BroadcastConfig.id == campaign_db_id)
-                )
-            ).scalars().first()
-            active_accounts = (
-                await db.execute(
-                    select(TelegramAccount)
-                    .where(
-                        TelegramAccount.user_id == str(user_id),
-                        TelegramAccount.is_active.is_(True),
-                        or_(TelegramAccount.is_flood_wait.is_(False), TelegramAccount.flood_wait_until <= utcnow()),
+                (
+                    await db.execute(
+                        select(BroadcastConfig).where(
+                            BroadcastConfig.user_id == str(user_id),
+                            BroadcastConfig.id == campaign_db_id,
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .first()
+            )
+            active_accounts = (
+                (
+                    await db.execute(
+                        select(TelegramAccount).where(
+                            TelegramAccount.user_id == str(user_id),
+                            TelegramAccount.is_active.is_(True),
+                            or_(
+                                TelegramAccount.is_flood_wait.is_(False),
+                                TelegramAccount.flood_wait_until <= utcnow(),
+                            ),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
 
             target_groups = (
-                await db.execute(
-                    select(UserGroup).where(UserGroup.user_id == str(user_id), UserGroup.is_active.is_(True)).order_by(UserGroup.id.asc())
+                (
+                    await db.execute(
+                        select(UserGroup)
+                        .where(
+                            UserGroup.user_id == str(user_id),
+                            UserGroup.is_active.is_(True),
+                        )
+                        .order_by(UserGroup.id.asc())
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         safety_seconds = max(0, int(settings.broadcast_interval_safety_seconds))
-        cycle_interval_seconds = max(60, int((config.interval if config and config.interval else 60))) + safety_seconds
+        cycle_interval_seconds = (
+            max(60, int((config.interval if config and config.interval else 60)))
+            + safety_seconds
+        )
 
         if config is not None:
             sent_cutoff = self.cycle_cutoff(utcnow(), cycle_interval_seconds)
@@ -603,14 +682,21 @@ class UserbotService:
                 )
 
         if not active_accounts:
-            return BroadcastExecutionResult(success=False, count=0, errors=[], error="Faol Telegram akkaunt topilmadi")
+            return BroadcastExecutionResult(
+                success=False,
+                count=0,
+                errors=[],
+                error="Faol Telegram akkaunt topilmadi",
+            )
 
         if not target_groups:
             return BroadcastExecutionResult(success=True, count=0, errors=[])
 
         available_ids = [a.id for a in active_accounts]
         await self.recover_stuck_inflight_attempts(user_id, campaign_id)
-        await self.seed_campaign_attempts_if_needed(user_id, campaign_id, list(target_groups), available_ids, max_retries)
+        await self.seed_campaign_attempts_if_needed(
+            user_id, campaign_id, list(target_groups), available_ids, max_retries
+        )
 
         target_by_id = {g.id: g for g in target_groups}
 
@@ -645,7 +731,10 @@ class UserbotService:
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastAttempt)
-                        .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
+                        .where(
+                            BroadcastAttempt.id == attempt.id,
+                            BroadcastAttempt.status == "in-flight",
+                        )
                         .values(
                             status="pending",
                             next_attempt_at=now_plus_ms(30000),
@@ -659,18 +748,32 @@ class UserbotService:
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastAttempt)
-                        .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
-                        .values(status="failed-terminal", terminal_reason_code="missing-target", last_error="Target group not found")
+                        .where(
+                            BroadcastAttempt.id == attempt.id,
+                            BroadcastAttempt.status == "in-flight",
+                        )
+                        .values(
+                            status="failed-terminal",
+                            terminal_reason_code="missing-target",
+                            last_error="Target group not found",
+                        )
                     )
                 return
 
             if attempt.sent_at is not None:
-                if not self.is_interval_elapsed(attempt.sent_at, cycle_interval_seconds, utcnow()):
-                    next_due = attempt.sent_at + timedelta(seconds=cycle_interval_seconds)
+                if not self.is_interval_elapsed(
+                    attempt.sent_at, cycle_interval_seconds, utcnow()
+                ):
+                    next_due = attempt.sent_at + timedelta(
+                        seconds=cycle_interval_seconds
+                    )
                     async with db_session() as db:
                         await db.execute(
                             update(BroadcastAttempt)
-                            .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
+                            .where(
+                                BroadcastAttempt.id == attempt.id,
+                                BroadcastAttempt.status == "in-flight",
+                            )
                             .values(status="pending", next_attempt_at=next_due)
                         )
                     return
@@ -681,8 +784,16 @@ class UserbotService:
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastAttempt)
-                        .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
-                        .values(status="sent", sent_at=utcnow(), terminal_reason_code=None, last_error=None)
+                        .where(
+                            BroadcastAttempt.id == attempt.id,
+                            BroadcastAttempt.status == "in-flight",
+                        )
+                        .values(
+                            status="sent",
+                            sent_at=utcnow(),
+                            terminal_reason_code=None,
+                            last_error=None,
+                        )
                     )
             except Exception as e:
                 err_msg = normalize_error_message(e)
@@ -704,7 +815,10 @@ class UserbotService:
                     async with db_session() as db:
                         await db.execute(
                             update(BroadcastAttempt)
-                            .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
+                            .where(
+                                BroadcastAttempt.id == attempt.id,
+                                BroadcastAttempt.status == "in-flight",
+                            )
                             .values(
                                 status="pending",
                                 retry_count=retry_count,
@@ -720,18 +834,27 @@ class UserbotService:
                                 .where(TelegramAccount.id == account_id)
                                 .values(
                                     is_flood_wait=True,
-                                    flood_wait_until=now_plus_ms(classified["retry_after_seconds"] * 1000),
+                                    flood_wait_until=now_plus_ms(
+                                        classified["retry_after_seconds"] * 1000
+                                    ),
                                 )
                             )
                 else:
                     async with db_session() as db:
                         await db.execute(
                             update(BroadcastAttempt)
-                            .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "in-flight")
+                            .where(
+                                BroadcastAttempt.id == attempt.id,
+                                BroadcastAttempt.status == "in-flight",
+                            )
                             .values(
                                 status="failed-terminal",
                                 retry_count=retry_count,
-                                terminal_reason_code=("retry-exhausted" if exhausted else classified["terminal_code"]),
+                                terminal_reason_code=(
+                                    "retry-exhausted"
+                                    if exhausted
+                                    else classified["terminal_code"]
+                                ),
                                 last_error=err_msg,
                             )
                         )
@@ -748,27 +871,44 @@ class UserbotService:
 
                 async with db_session() as db:
                     attempt = (
-                        await db.execute(
-                            select(BroadcastAttempt)
-                            .where(
-                                BroadcastAttempt.user_id == str(user_id),
-                                BroadcastAttempt.campaign_id == campaign_id,
-                                BroadcastAttempt.assigned_account_id == account_id,
-                                BroadcastAttempt.status == "pending",
-                                or_(BroadcastAttempt.next_attempt_at.is_(None), BroadcastAttempt.next_attempt_at <= utcnow()),
+                        (
+                            await db.execute(
+                                select(BroadcastAttempt)
+                                .where(
+                                    BroadcastAttempt.user_id == str(user_id),
+                                    BroadcastAttempt.campaign_id == campaign_id,
+                                    BroadcastAttempt.assigned_account_id == account_id,
+                                    BroadcastAttempt.status == "pending",
+                                    or_(
+                                        BroadcastAttempt.next_attempt_at.is_(None),
+                                        BroadcastAttempt.next_attempt_at <= utcnow(),
+                                    ),
+                                )
+                                .order_by(
+                                    BroadcastAttempt.sequence.asc(),
+                                    BroadcastAttempt.created_at.asc(),
+                                )
+                                .limit(1)
                             )
-                            .order_by(BroadcastAttempt.sequence.asc(), BroadcastAttempt.created_at.asc())
-                            .limit(1)
                         )
-                    ).scalars().first()
+                        .scalars()
+                        .first()
+                    )
 
                     if not attempt:
                         break
 
                     result = await db.execute(
                         update(BroadcastAttempt)
-                        .where(BroadcastAttempt.id == attempt.id, BroadcastAttempt.status == "pending")
-                        .values(status="in-flight", started_at=utcnow(), assigned_account_id=account_id)
+                        .where(
+                            BroadcastAttempt.id == attempt.id,
+                            BroadcastAttempt.status == "pending",
+                        )
+                        .values(
+                            status="in-flight",
+                            started_at=utcnow(),
+                            assigned_account_id=account_id,
+                        )
                     )
 
                     if (result.rowcount or 0) == 0:
@@ -783,12 +923,17 @@ class UserbotService:
         await asyncio.gather(*worker_tasks, return_exceptions=True)
 
         min_pending_next_attempt = None
+        ready_pending_count = 0
         provider_constrained_pending = 0
+        pending_reference_now = utcnow()
         async with db_session() as db:
             rows = (
                 await db.execute(
                     select(BroadcastAttempt.status, func.count(BroadcastAttempt.id))
-                    .where(BroadcastAttempt.user_id == str(user_id), BroadcastAttempt.campaign_id == campaign_id)
+                    .where(
+                        BroadcastAttempt.user_id == str(user_id),
+                        BroadcastAttempt.campaign_id == campaign_id,
+                    )
                     .group_by(BroadcastAttempt.status)
                 )
             ).all()
@@ -799,9 +944,29 @@ class UserbotService:
                         BroadcastAttempt.user_id == str(user_id),
                         BroadcastAttempt.campaign_id == campaign_id,
                         BroadcastAttempt.status == "pending",
+                        BroadcastAttempt.next_attempt_at.is_not(None),
+                        BroadcastAttempt.next_attempt_at > pending_reference_now,
                     )
                 )
             ).scalar_one_or_none()
+
+            ready_pending_count = int(
+                (
+                    await db.execute(
+                        select(func.count(BroadcastAttempt.id)).where(
+                            BroadcastAttempt.user_id == str(user_id),
+                            BroadcastAttempt.campaign_id == campaign_id,
+                            BroadcastAttempt.status == "pending",
+                            or_(
+                                BroadcastAttempt.next_attempt_at.is_(None),
+                                BroadcastAttempt.next_attempt_at
+                                <= pending_reference_now,
+                            ),
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
 
             provider_constrained_pending = int(
                 (
@@ -810,7 +975,8 @@ class UserbotService:
                             BroadcastAttempt.user_id == str(user_id),
                             BroadcastAttempt.campaign_id == campaign_id,
                             BroadcastAttempt.status == "pending",
-                            BroadcastAttempt.terminal_reason_code == "retriable-rate-limit",
+                            BroadcastAttempt.terminal_reason_code
+                            == "retriable-rate-limit",
                         )
                     )
                 ).scalar_one()
@@ -833,10 +999,13 @@ class UserbotService:
             delta = (min_pending_next_attempt - utcnow()).total_seconds() * 1000
             next_due_in_ms = max(0, int(delta))
         summary["nextDueInMs"] = next_due_in_ms
+        summary["readyPendingCount"] = ready_pending_count
         summary["providerConstrainedDelay"] = provider_constrained_pending > 0
 
         return BroadcastExecutionResult(
-            success=summary["failed"] == 0 and summary["pending"] == 0 and summary["inFlight"] == 0,
+            success=summary["failed"] == 0
+            and summary["pending"] == 0
+            and summary["inFlight"] == 0,
             count=summary["sent"],
             errors=[],
             summary=summary,
