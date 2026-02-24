@@ -17,7 +17,7 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d -
 
 Endpoints after startup:
 
-- Grafana: `http://localhost:3000` (default login `admin` / `admin`)
+- Grafana: `http://localhost:3001` (default login `admin` / `admin`)
 - Prometheus: `http://localhost:9090`
 - Alertmanager: `http://localhost:9093`
 - App metrics JSON: `http://localhost:3011/metrics`
