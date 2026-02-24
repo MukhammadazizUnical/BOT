@@ -1,8 +1,11 @@
+import logging
 import random
 from datetime import datetime
 
 from app.config import settings
 from app.db import db_session
+from app.logging_utils import log_event
+from app.metrics import inc_metric, metric_key, set_gauge_metric
 from app.models import BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
@@ -16,6 +19,7 @@ class BroadcastProcessorService:
     ):
         self.userbot_service = userbot_service
         self.queue_service = queue_service
+        self.logger = logging.getLogger("broadcast_processor_service")
 
     async def acquire_user_lock(self, user_id: str, token: str) -> bool:
         key = f"broadcast:user-lock:{user_id}"
@@ -31,6 +35,12 @@ class BroadcastProcessorService:
 
     async def process(self, payload: dict) -> dict:
         if settings.bot_role.strip().lower() != "worker":
+            await inc_metric(metric_key("processor.skipped_non_worker", service="processor"))
+            log_event(
+                self.logger,
+                logging.INFO,
+                "broadcast_process_skipped_non_worker",
+            )
             return {
                 "success": True,
                 "count": 0,
@@ -45,6 +55,14 @@ class BroadcastProcessorService:
         payload_interval_seconds = int(payload.get("intervalSeconds") or 0)
         started_at = datetime.utcnow()
         campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
+        log_event(
+            self.logger,
+            logging.INFO,
+            "broadcast_process_started",
+            user_id=user_id,
+            campaign_id=campaign_id,
+        )
+        await inc_metric(metric_key("processor.started", service="processor"))
 
         def parse_iso(value: str) -> datetime | None:
             try:
@@ -116,6 +134,14 @@ class BroadcastProcessorService:
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)
         if not lock:
+            await inc_metric(metric_key("processor.lock_busy", service="processor"))
+            log_event(
+                self.logger,
+                logging.INFO,
+                "broadcast_process_lock_busy",
+                user_id=user_id,
+                campaign_id=campaign_id,
+            )
             return {
                 "success": True,
                 "count": 0,
@@ -188,9 +214,12 @@ class BroadcastProcessorService:
             summary = result.summary or {}
             failed = int(summary.get("failed", 0) or 0)
             sent_count = int(result.count or 0)
-            is_failure = bool(result.error) or (failed > 0 and sent_count == 0)
             pending = int(summary.get("pending", 0) or 0)
             in_flight = int(summary.get("inFlight", 0) or 0)
+            is_failure = bool(result.error) or (failed > 0 and sent_count == 0)
+            all_targets_sent = (
+                not bool(result.error) and failed == 0 and pending == 0 and in_flight == 0
+            )
 
             outcome = "sent"
             if result.error == "Faol Telegram akkaunt topilmadi":
@@ -202,8 +231,40 @@ class BroadcastProcessorService:
             elif pending > 0 or in_flight > 0:
                 outcome = "deferred"
 
+            log_event(
+                self.logger,
+                logging.INFO,
+                "broadcast_process_result",
+                user_id=user_id,
+                campaign_id=campaign_id,
+                outcome=outcome,
+                success=not is_failure,
+                all_targets_sent=all_targets_sent,
+                count=sent_count,
+                lag_ms=lag_ms,
+                continuation_enqueued=continuation_enqueued,
+                continuation_reason=continuation_reason,
+            )
+            await inc_metric(metric_key("processor.result.total", service="processor"))
+            await inc_metric(metric_key("processor.result.by_outcome", service="processor", outcome=outcome))
+            if not is_failure:
+                await inc_metric(metric_key("processor.result.by_outcome", service="processor", outcome="success"))
+            else:
+                await inc_metric(metric_key("processor.result.by_outcome", service="processor", outcome="failed"))
+            await set_gauge_metric(metric_key("processor.last_lag_ms", service="processor"), int(lag_ms))
+            await set_gauge_metric(metric_key("processor.last_sent_count", service="processor"), int(sent_count))
+            if continuation_enqueued:
+                await inc_metric(
+                    metric_key(
+                        "processor.continuation.enqueued",
+                        service="processor",
+                        reason=(continuation_reason or "unknown"),
+                    )
+                )
+
             return {
                 "success": not is_failure,
+                "allTargetsSent": all_targets_sent,
                 "count": sent_count,
                 "errors": result.errors,
                 "error": result.error,
@@ -217,4 +278,11 @@ class BroadcastProcessorService:
                 "lagMs": lag_ms,
             }
         finally:
+            log_event(
+                self.logger,
+                logging.INFO,
+                "broadcast_process_finished",
+                user_id=user_id,
+                campaign_id=campaign_id,
+            )
             await self.release_user_lock(user_id, token)

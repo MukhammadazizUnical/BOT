@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import uuid
 
@@ -6,11 +7,14 @@ from arq import create_pool
 from arq.connections import RedisSettings
 
 from app.config import settings
+from app.logging_utils import log_event
+from app.metrics import inc_metric, metric_key, set_gauge_metric
 
 
 class BroadcastQueueService:
     def __init__(self):
         self.redis_pool = None
+        self.logger = logging.getLogger("broadcast_queue_service")
 
     async def get_pool(self):
         if self.redis_pool is None:
@@ -43,7 +47,27 @@ class BroadcastQueueService:
             _job_id=resolved_job_id,
         )
         if queued is None:
+            await inc_metric(metric_key("queue.enqueue.result", service="queue", outcome="duplicate"))
+            log_event(
+                self.logger,
+                logging.WARNING,
+                "broadcast_enqueue_skipped_duplicate",
+                user_id=user_id,
+                campaign_id=campaign_id,
+                job_id=resolved_job_id,
+            )
             return None
+        await inc_metric(metric_key("queue.enqueue.result", service="queue", outcome="success"))
+        await set_gauge_metric(metric_key("queue.last_enqueue_delay_ms", service="queue"), int(delay_ms))
+        log_event(
+            self.logger,
+            logging.INFO,
+            "broadcast_enqueued",
+            user_id=user_id,
+            campaign_id=campaign_id,
+            job_id=resolved_job_id,
+            delay_ms=delay_ms,
+        )
         return resolved_job_id
 
     @staticmethod

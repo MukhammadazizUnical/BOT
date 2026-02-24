@@ -32,3 +32,6 @@ docker compose logs -f app worker bot
 
 - DB tables are created at app startup for first run.
 - For production, move to Alembic migrations.
+- Observability docs: `docs/metrics_observability.md`.
+- Optional observability overlay: `docker-compose.observability.yml`.
+- Overlay includes Prometheus, Grafana, and Alertmanager.

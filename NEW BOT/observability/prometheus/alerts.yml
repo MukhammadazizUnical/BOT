@@ -1,0 +1,47 @@
+groups:
+  - name: send-bot-broadcast-alerts
+    rules:
+      - alert: SendBotHighProcessorLag
+        expr: processor_last_lag_ms{service="processor"} > 120000
+        for: 5m
+        labels:
+          severity: warning
+          service: send-bot
+        annotations:
+          summary: "Processor lag is high"
+          description: "processor_last_lag_ms has been above 120s for 5 minutes."
+
+      - alert: SendBotFailureRatioHigh
+        expr: |
+          (
+            sum(rate(processor_result_by_outcome{service="processor", outcome="failed"}[10m]))
+            /
+            clamp_min(sum(rate(processor_result_total{service="processor"}[10m])), 1)
+          ) > 0.20
+        for: 10m
+        labels:
+          severity: critical
+          service: send-bot
+        annotations:
+          summary: "Failure ratio is high"
+          description: "Failed outcome ratio has exceeded 20% over the last 10 minutes."
+
+      - alert: SendBotLockContentionHigh
+        expr: sum(rate(processor_lock_busy{service="processor"}[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: send-bot
+        annotations:
+          summary: "Lock contention is elevated"
+          description: "processor_lock_busy rate has remained above threshold for 10 minutes."
+
+      - alert: SendBotNoProcessingActivity
+        expr: increase(processor_result_total{service="processor"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: send-bot
+        annotations:
+          summary: "No processing activity detected"
+          description: "No processor_result_total increments observed in the last 15 minutes."

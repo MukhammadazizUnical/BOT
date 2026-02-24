@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: send-bot-dashboards
+    orgId: 1
+    folder: SEND_BOT
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

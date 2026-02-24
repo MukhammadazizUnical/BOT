@@ -33,6 +33,8 @@ def classify_telegram_error(
     error: Exception | str | object, slowmode_default_seconds: int = 300
 ) -> dict:
     msg = normalize_error_message(error).upper()
+    class_name = error.__class__.__name__.upper() if isinstance(error, Exception) else ""
+    is_slowmode = "SLOWMODE" in msg or "SLOWMODE" in class_name
     retry_after_seconds = None
 
     for attr in ("seconds", "value"):
@@ -67,6 +69,15 @@ def classify_telegram_error(
             "retriable": True,
             "terminal_code": "retriable-rate-limit",
             "retry_after_seconds": retry_after_seconds,
+            "is_slowmode": is_slowmode,
+        }
+
+    if "FLOOD_WAIT" in class_name or "SLOWMODE" in class_name:
+        return {
+            "retriable": True,
+            "terminal_code": "retriable-rate-limit",
+            "retry_after_seconds": retry_after_seconds,
+            "is_slowmode": is_slowmode,
         }
 
     terminal = next((t for t in TERMINAL_REASON_TOKENS if t in msg), None)
@@ -75,13 +86,20 @@ def classify_telegram_error(
             "retriable": False,
             "terminal_code": terminal.lower(),
             "retry_after_seconds": None,
+            "is_slowmode": False,
         }
 
     return {
         "retriable": False,
         "terminal_code": "unknown",
         "retry_after_seconds": None,
+        "is_slowmode": False,
     }
+
+
+def is_slowmode_error(error: Exception | str | object) -> bool:
+    msg = normalize_error_message(error).upper()
+    return "SLOWMODE_WAIT" in msg
 
 
 def compute_retry_delay_ms(

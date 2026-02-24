@@ -11,3 +11,10 @@ class SendMessageDTO(BaseModel):
 class HealthResponse(BaseModel):
     ok: bool
     role: str
+
+
+class ReadyResponse(BaseModel):
+    ok: bool
+    role: str
+    database: bool
+    redis: bool

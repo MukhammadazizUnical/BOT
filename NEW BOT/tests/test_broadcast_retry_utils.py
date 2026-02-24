@@ -1,4 +1,4 @@
-from app.utils import classify_telegram_error, compute_retry_delay_ms
+from app.utils import classify_telegram_error, compute_retry_delay_ms, is_slowmode_error
 
 
 def test_provider_retry_after_is_hard_lower_bound():
@@ -46,3 +46,19 @@ def test_retry_after_is_read_from_exception_value_attr():
     classified = classify_telegram_error(_FakeFloodError(42))
     assert classified["retriable"] is True
     assert classified["retry_after_seconds"] == 42
+
+
+def test_is_slowmode_error_detects_token():
+    assert is_slowmode_error("Telegram says: [420 SLOWMODE_WAIT_10]") is True
+
+
+def test_is_slowmode_error_ignores_non_slowmode_message():
+    assert is_slowmode_error("FLOOD_WAIT_120") is False
+
+
+def test_classifier_marks_slowmode_by_exception_class_name():
+    SlowmodeWait = type("SlowmodeWait", (Exception,), {})
+    err = SlowmodeWait("A wait of 300 seconds is required")
+    classified = classify_telegram_error(err, slowmode_default_seconds=300)
+    assert classified["retriable"] is True
+    assert classified["is_slowmode"] is True

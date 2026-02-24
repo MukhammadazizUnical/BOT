@@ -10,8 +10,10 @@ services:
     ports:
       - '3011:3010'
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 3010
 
   worker:
@@ -23,8 +25,10 @@ services:
       - BOT_ROLE=worker
       - TZ=UTC-5
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: arq app.worker.WorkerSettings
 
   bot:
@@ -36,8 +40,10 @@ services:
       - BOT_ROLE=app
       - TZ=UTC-5
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: python -m app.bot_runner
 
   postgres:
@@ -53,6 +59,12 @@ services:
       - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tgbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -61,6 +73,12 @@ services:
       - TZ=UTC-5
     ports:
       - '6381:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
 volumes:
   postgres_data:

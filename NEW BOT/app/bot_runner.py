@@ -118,7 +118,7 @@ def interval_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="3 daqiqa ⏱️", callback_data="set_interval_3"),
-                InlineKeyboardButton(text="5 daqiqa (+1m) ⏱️", callback_data="set_interval_5"),
+                InlineKeyboardButton(text="5 daqiqa ⏱️", callback_data="set_interval_5"),
             ],
             [
                 InlineKeyboardButton(text="10 daqiqa ⏱️", callback_data="set_interval_10"),
@@ -300,6 +300,7 @@ async def show_group_selection(message: Message, is_edit: bool = False):
     if groups:
         rows.append([InlineKeyboardButton(text="Hammasini o'chirish 🗑", callback_data="deselect_all_groups")])
     rows.append([InlineKeyboardButton(text="Guruh qo'shish (Import) ➕", callback_data="add_group")])
+    rows.append([InlineKeyboardButton(text="Profildagi hamma guruhni qo'shish ⚡", callback_data="add_all_groups_0")])
     rows.append([InlineKeyboardButton(text="Ortga", callback_data="back_to_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     if is_edit:
@@ -575,6 +576,9 @@ async def render_add_group_page(message: Message, user_id: int, page: int, is_ed
 
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="select_groups")])
     selected_count = len(existing.intersection({str(g.get("id")) for g in options}))
+    all_selected = selected_count == len(options)
+    bulk_add_text = "✅ Hammasi qo'shilgan" if all_selected else "➕ Barchasini qo'shish"
+    rows.append([InlineKeyboardButton(text=bulk_add_text, callback_data=f"add_all_groups_{page}")])
     text = (
         "📋 Guruh qo'shish:\n"
         "Profilingizdagi guruhlarni tanlang (✅ tanlangan, ❌ tanlanmagan):\n"
@@ -654,6 +658,42 @@ async def on_deselect_all_groups(callback: CallbackQuery):
         await group_service.remove_group(str(callback.from_user.id), g.id)
     await callback.answer("Barchasi o'chirildi 🗑")
     await show_group_selection(callback.message, is_edit=True)
+
+
+async def on_add_all_groups(callback: CallbackQuery):
+    if not await ensure_logged_in(callback):
+        return
+
+    payload = callback.data.removeprefix("add_all_groups_")
+    page = int(payload) if payload.isdigit() else 0
+
+    remote = dedupe_remote_groups(await userbot_service.get_remote_groups(callback.from_user.id))
+    if not remote:
+        await callback.answer("Import uchun guruh topilmadi", show_alert=True)
+        await render_add_group_page(callback.message, callback.from_user.id, page, is_edit=True)
+        return
+
+    db_groups = await group_service.get_groups(str(callback.from_user.id), active_only=False)
+    existing_ids = {g.id for g in db_groups}
+
+    added = 0
+    for group in remote:
+        gid = str(group.get("id"))
+        if gid not in existing_ids:
+            added += 1
+        await group_service.add_group(
+            str(callback.from_user.id),
+            gid,
+            group["title"],
+            group.get("type", "chat"),
+            group.get("access_hash"),
+        )
+
+    if added > 0:
+        await callback.answer(f"✅ {added} ta guruh qo'shildi")
+    else:
+        await callback.answer("Barcha guruhlar allaqachon qo'shilgan ✅")
+    await render_add_group_page(callback.message, callback.from_user.id, page, is_edit=True)
 
 
 async def on_send_message_mode(callback: CallbackQuery):
@@ -1159,7 +1199,7 @@ async def on_text(message: Message):
 
 async def on_interval_callback(callback: CallbackQuery):
     minutes = int(callback.data.split("_")[-1])
-    effective_minutes = minutes + 1 if minutes == 5 else minutes
+    effective_minutes = minutes
     user_id = callback.from_user.id
     msg = broadcast_message_text.get(user_id)
     if not msg:
@@ -1175,10 +1215,7 @@ async def on_interval_callback(callback: CallbackQuery):
     await scheduler_service.set_config(str(user_id), message=msg, interval=effective_minutes * 60, is_active=True)
     await save_message_history_if_new(user_id, msg)
     user_states[user_id] = UserState.IDLE
-    if effective_minutes != minutes:
-        notice = f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa (+1 daqiqa safety)"
-    else:
-        notice = f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa"
+    notice = f"✅ Auto Broadcast ishga tushirildi!\n⏱ Interval: {minutes} daqiqa"
     await show_menu_callback(callback, notice)
     await callback.answer()
 
@@ -1201,6 +1238,7 @@ async def main():
     dp.callback_query.register(on_add_group, F.data == "add_group")
     dp.callback_query.register(on_add_group, F.data.startswith("add_group_page_"))
     dp.callback_query.register(on_import_group, F.data.startswith("import_group_"))
+    dp.callback_query.register(on_add_all_groups, F.data.startswith("add_all_groups_"))
     dp.callback_query.register(on_toggle_group, F.data.startswith("toggle_group_"))
     dp.callback_query.register(on_deselect_all_groups, F.data == "deselect_all_groups")
     dp.callback_query.register(on_send_message_mode, F.data == "send_message")

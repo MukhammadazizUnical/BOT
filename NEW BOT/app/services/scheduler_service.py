@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from datetime import datetime
 
 from sqlalchemy import exists, or_, select
 
 from app.config import settings
 from app.db import db_session
+from app.logging_utils import log_event
+from app.metrics import inc_metric, metric_key, set_gauge_metric
 from app.models import BroadcastConfig, TelegramAccount
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
@@ -14,6 +17,7 @@ from app.utils import deterministic_jitter_ms
 class SchedulerService:
     def __init__(self, queue_service: BroadcastQueueService):
         self.queue_service = queue_service
+        self.logger = logging.getLogger("scheduler_service")
         self._task: asyncio.Task | None = None
         self._running = False
         self.lock_key = "broadcast:scheduler:lock"
@@ -36,7 +40,9 @@ class SchedulerService:
             try:
                 await self.check_and_run()
             except Exception:
-                pass
+                await inc_metric(metric_key("scheduler.loop.error", service="scheduler"))
+                log_event(self.logger, logging.ERROR, "scheduler_loop_iteration_failed")
+                self.logger.exception("Scheduler loop iteration failed")
             await asyncio.sleep(max(1, settings.scheduler_check_interval_ms // 1000))
 
     async def acquire_lock(self, token: str) -> bool:
@@ -58,11 +64,16 @@ class SchedulerService:
                 return
 
             now = datetime.utcnow()
-            queued_ids: list[int] = []
+            queued_count = 0
             for config in due:
                 safe_interval = max(60, int(config.interval or 60))
                 run_slot = int(now.timestamp() // safe_interval)
                 delay = deterministic_jitter_ms(config.user_id, run_slot, settings.scheduler_jitter_max_ms)
+                scheduled_job_id = self.queue_service.scheduled_job_id(
+                    user_id=config.user_id,
+                    campaign_id=str(config.id),
+                    run_slot=run_slot,
+                )
                 queued_job_id = await self.queue_service.enqueue_send(
                     user_id=config.user_id,
                     message=config.message or "",
@@ -70,17 +81,20 @@ class SchedulerService:
                     queued_at=now.isoformat(),
                     interval_seconds=int(config.interval or 0),
                     delay_ms=delay,
+                    job_id=scheduled_job_id,
                 )
                 if queued_job_id is not None:
-                    queued_ids.append(config.id)
+                    queued_count += 1
 
-            if queued_ids:
-                async with db_session() as db:
-                    rows = (
-                        await db.execute(select(BroadcastConfig).where(BroadcastConfig.id.in_(queued_ids)))
-                    ).scalars().all()
-                    for row in rows:
-                        row.last_run_at = now
+            if queued_count > 0:
+                await inc_metric(metric_key("scheduler.jobs.enqueued", service="scheduler"), queued_count)
+                await set_gauge_metric(metric_key("scheduler.last_enqueued_count", service="scheduler"), queued_count)
+                log_event(
+                    self.logger,
+                    logging.INFO,
+                    "scheduler_jobs_enqueued",
+                    queued_count=queued_count,
+                )
         finally:
             await self.release_lock(token)
 
@@ -124,8 +138,7 @@ class SchedulerService:
         if last_run_at is None:
             return True
         reference_now = now or datetime.utcnow()
-        safety_seconds = max(0, int(settings.broadcast_interval_safety_seconds))
-        threshold_seconds = max(60, int(interval_seconds * settings.scheduler_early_factor)) + safety_seconds
+        threshold_seconds = max(60, int(interval_seconds))
         elapsed = (reference_now - last_run_at).total_seconds()
         return elapsed >= threshold_seconds
 

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     tg_manual_video_id: str = ""
     tg_announce_sticker_id: str = ""
     owner_user_id: str = ""
+    alert_webhook_token: str = ""
+    alert_webhook_cooldown_seconds: int = 300
+    alert_webhook_forward_enabled: bool = False
 
     database_url: str = "postgresql+asyncpg://postgres:1111@localhost:5432/tgbot"
     redis_url: str = "redis://localhost:6379/0"
@@ -30,12 +33,13 @@ class Settings(BaseSettings):
     broadcast_attempts_per_job: int = 2
     broadcast_continuation_base_delay_ms: int = 1500
     broadcast_continuation_jitter_ms: int = 1500
-    broadcast_interval_safety_seconds: int = 15
+    broadcast_interval_safety_seconds: int = 0
 
     telegram_per_account_mpm: int = 6
     telegram_per_account_min_delay_ms: int = 3500
     telegram_global_mps: int = 125
     telegram_slowmode_default_seconds: int = 300
+    telegram_slowmode_retry_seconds: int = 10
 
     broadcast_max_retries: int = 3
     broadcast_retry_base_ms: int = 2000

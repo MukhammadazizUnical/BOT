@@ -29,7 +29,6 @@ from app.models import (
 from app.utils import (
     build_attempt_idempotency_key,
     classify_telegram_error,
-    compute_retry_delay_ms,
     now_plus_ms,
     normalize_error_message,
     utcnow,
@@ -77,6 +76,38 @@ class UserbotService:
     @staticmethod
     def is_retry_exhausted(next_retry_count: int, max_retries: int) -> bool:
         return next_retry_count > max_retries
+
+    @staticmethod
+    def compute_cycle_next_due(
+        queued_at: str | None,
+        cycle_interval_seconds: int,
+        fallback_now: datetime | None = None,
+    ) -> datetime:
+        parsed_queued = None
+        try:
+            if queued_at:
+                normalized = str(queued_at).replace("Z", "+00:00")
+                parsed_queued = datetime.fromisoformat(normalized)
+                if parsed_queued.tzinfo is not None:
+                    parsed_queued = parsed_queued.replace(tzinfo=None)
+        except Exception:
+            parsed_queued = None
+
+        if parsed_queued is not None:
+            return parsed_queued + timedelta(seconds=cycle_interval_seconds)
+        return (fallback_now or utcnow()) + timedelta(seconds=cycle_interval_seconds)
+
+    @staticmethod
+    def should_retry_retriable(
+        classified: dict,
+        next_retry_count: int,
+        max_retries: int,
+    ) -> bool:
+        if not bool(classified.get("retriable", False)):
+            return False
+        if bool(classified.get("is_slowmode", False)):
+            return True
+        return not UserbotService.is_retry_exhausted(next_retry_count, max_retries)
 
     async def _ensure_user(self, user_id: int) -> None:
         async with db_session() as db:
@@ -635,14 +666,13 @@ class UserbotService:
                 .all()
             )
 
-        safety_seconds = max(0, int(settings.broadcast_interval_safety_seconds))
-        cycle_interval_seconds = (
-            max(60, int((config.interval if config and config.interval else 60)))
-            + safety_seconds
+        cycle_interval_seconds = max(
+            60, int((config.interval if config and config.interval else 60))
         )
 
         if config is not None:
-            sent_cutoff = self.cycle_cutoff(utcnow(), cycle_interval_seconds)
+            now_ref = utcnow()
+            sent_cutoff = self.cycle_cutoff(now_ref, cycle_interval_seconds)
             async with db_session() as db:
                 await db.execute(
                     update(BroadcastAttempt)
@@ -650,8 +680,17 @@ class UserbotService:
                         BroadcastAttempt.user_id == str(user_id),
                         BroadcastAttempt.campaign_id == campaign_id,
                         BroadcastAttempt.status == "sent",
-                        BroadcastAttempt.sent_at.is_not(None),
-                        BroadcastAttempt.sent_at <= sent_cutoff,
+                        or_(
+                            and_(
+                                BroadcastAttempt.next_attempt_at.is_not(None),
+                                BroadcastAttempt.next_attempt_at <= now_ref,
+                            ),
+                            and_(
+                                BroadcastAttempt.next_attempt_at.is_(None),
+                                BroadcastAttempt.sent_at.is_not(None),
+                                BroadcastAttempt.sent_at <= sent_cutoff,
+                            ),
+                        ),
                     )
                     .values(
                         status="pending",
@@ -760,27 +799,13 @@ class UserbotService:
                     )
                 return
 
-            if attempt.sent_at is not None:
-                if not self.is_interval_elapsed(
-                    attempt.sent_at, cycle_interval_seconds, utcnow()
-                ):
-                    next_due = attempt.sent_at + timedelta(
-                        seconds=cycle_interval_seconds
-                    )
-                    async with db_session() as db:
-                        await db.execute(
-                            update(BroadcastAttempt)
-                            .where(
-                                BroadcastAttempt.id == attempt.id,
-                                BroadcastAttempt.status == "in-flight",
-                            )
-                            .values(status="pending", next_attempt_at=next_due)
-                        )
-                    return
-
             try:
                 await acquire_global_slot()
                 await client.send_message(chat_id=int(target.id), text=message_text)
+                cycle_next_due = self.compute_cycle_next_due(
+                    queued_at=queued_at,
+                    cycle_interval_seconds=cycle_interval_seconds,
+                )
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastAttempt)
@@ -791,6 +816,7 @@ class UserbotService:
                         .values(
                             status="sent",
                             sent_at=utcnow(),
+                            next_attempt_at=cycle_next_due,
                             terminal_reason_code=None,
                             last_error=None,
                         )
@@ -804,13 +830,13 @@ class UserbotService:
                 retry_count = attempt.retry_count + 1
                 exhausted = self.is_retry_exhausted(retry_count, attempt.max_retries)
 
-                if classified["retriable"] and not exhausted:
-                    retry_delay_ms = compute_retry_delay_ms(
-                        retry_count=retry_count,
-                        retry_after_seconds=classified["retry_after_seconds"],
-                        base_delay_ms=retry_base_ms,
-                        max_delay_ms=retry_max_ms,
-                        jitter_ratio=retry_jitter_ratio,
+                if self.should_retry_retriable(
+                    classified=classified,
+                    next_retry_count=retry_count,
+                    max_retries=attempt.max_retries,
+                ):
+                    retry_delay_ms = max(
+                        1000, int(settings.telegram_slowmode_retry_seconds) * 1000
                     )
                     async with db_session() as db:
                         await db.execute(
@@ -827,18 +853,6 @@ class UserbotService:
                                 terminal_reason_code="retriable-rate-limit",
                             )
                         )
-
-                        if classified["retry_after_seconds"]:
-                            await db.execute(
-                                update(TelegramAccount)
-                                .where(TelegramAccount.id == account_id)
-                                .values(
-                                    is_flood_wait=True,
-                                    flood_wait_until=now_plus_ms(
-                                        classified["retry_after_seconds"] * 1000
-                                    ),
-                                )
-                            )
                 else:
                     async with db_session() as db:
                         await db.execute(
