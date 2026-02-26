@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     tg_api_hash: str = ""
     tg_manual_video_id: str = ""
     tg_announce_sticker_id: str = ""
+    tg_error_sticker_id: str = ""
     owner_user_id: str = ""
+    support_admin_username: str = ""
     alert_webhook_token: str = ""
     alert_webhook_cooldown_seconds: int = 300
     alert_webhook_forward_enabled: bool = False

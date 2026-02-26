@@ -80,6 +80,72 @@ def dedupe_remote_groups(groups: list[dict]) -> list[dict]:
     return sorted(result, key=lambda item: str(item.get("title", "")))
 
 
+def start_guide_text() -> str:
+    return (
+        "👋 Assalomu alaykum!\n\n"
+        "Telegram guruhlarga qo'lda yozib o'tirmang — e'lonlaringizni bot o'zi avtomatik yuboradi! 🚀\n\n"
+        "✨ Bot imkoniyatlari:\n"
+        "• Guruhlarga avtomatik xabar yuborish\n"
+        "• Matnli va rasmli xabarlarni yuborish\n"
+        "• Yuborish oralig'ini boshqarish\n"
+        "• Xabarlar holatini kuzatish\n\n"
+        "🔐 Boshlash uchun quyidagi tugma orqali telefon raqamingizni yuboring.\n\n"
+        "🎁 24 soat bepul sinov muddati mavjud!"
+    )
+
+
+def pretty_error_text(title: str, detail: str) -> str:
+    return (
+        f"⚠️ {title}\n\n"
+        f"{detail}\n\n"
+        "Iltimos, qayta urinib ko'ring yoki admin bilan bog'laning."
+    )
+
+
+async def send_pretty_error(message: Message, title: str, detail: str) -> None:
+    sticker_id = (settings.tg_error_sticker_id or settings.tg_announce_sticker_id or "").strip()
+    if sticker_id:
+        try:
+            await message.answer_sticker(sticker_id)
+        except Exception:
+            logger.exception("Failed to send error sticker")
+    await message.answer(pretty_error_text(title, detail))
+
+
+async def notify_access_granted(target_user_id: str) -> None:
+    bot = Bot(token=settings.tg_bot_token)
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Hisobga kirish (Login)", callback_data="login")],
+            [InlineKeyboardButton(text="▶️ Boshlash", callback_data="back_to_menu")],
+        ]
+    )
+    text = (
+        "✅ Sizga botdan foydalanish uchun ruxsat berildi!\n\n"
+        "📲 Davom etish uchun avval login qiling.\n"
+        "Telegram akkauntingizni ulab olgach, auto-xabarni ishga tushirishingiz mumkin."
+    )
+    try:
+        await bot.send_message(chat_id=int(target_user_id), text=text, reply_markup=markup)
+    except Exception:
+        logger.exception("Failed to notify user about granted access user_id=%s", target_user_id)
+    finally:
+        await bot.session.close()
+
+
+async def send_start_guide(message: Message) -> None:
+    video_id = (settings.tg_manual_video_id or "").strip()
+    if video_id:
+        try:
+            await message.answer_video(
+                video=video_id,
+                caption="Avto Xabar botni ishlatish bo'yicha qo'llanma‼️",
+            )
+        except Exception:
+            logger.exception("Failed to send start guide video")
+    await message.answer(start_guide_text())
+
+
 def main_menu(has_session: bool, is_admin_user: bool, is_active: bool = False) -> InlineKeyboardMarkup:
     if is_admin_user:
         rows = [
@@ -102,13 +168,19 @@ def main_menu(has_session: bool, is_admin_user: bool, is_active: bool = False) -
     rows = [
         [
             InlineKeyboardButton(
-                text=("⏸ Auto-xabarni to'xtatish" if is_active else "▶️ Auto-xabarni boshlash"),
+                text=("⏸  Auto-xabarni to'xtatish" if is_active else "▶️  Auto-xabarni boshlash"),
                 callback_data=("stop_broadcast" if is_active else "start_broadcast"),
             )
         ],
-        [InlineKeyboardButton(text="👥 Guruhlar", callback_data="select_groups"), InlineKeyboardButton(text="📮 Xabar", callback_data="send_message")],
-        [InlineKeyboardButton(text="📊 Tarix", callback_data="sent_messages"), InlineKeyboardButton(text="🔄 Yangilash", callback_data="restart_bot")],
-        [InlineKeyboardButton(text="📚 To'liq ma'lumot", callback_data="full_manual")],
+        [
+            InlineKeyboardButton(text="👥  Guruhlar", callback_data="select_groups"),
+            InlineKeyboardButton(text="📮  Xabar", callback_data="send_message"),
+        ],
+        [
+            InlineKeyboardButton(text="📊  Tarix", callback_data="sent_messages"),
+            InlineKeyboardButton(text="🔄  Yangilash", callback_data="restart_bot"),
+        ],
+        [InlineKeyboardButton(text="📚  To'liq ma'lumot", callback_data="full_manual")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -155,7 +227,14 @@ async def show_menu(message: Message, notice: str | None = None):
         text = "👋 Xush kelibsiz!\n\n"
         text += f"🔌 Holat: {'✅ Ulangan' if has else '❌ Ulanmagan'}\n"
         if not has:
-            text += "\nBoshlash uchun:\n1) Login qiling\n2) Guruhlarni tanlang\n3) Xabar kiriting va interval tanlang"
+            text += (
+                "\n"
+                "Boshlash uchun:\n"
+                "1) Login qiling\n"
+                "2) Guruhlarni tanlang\n"
+                "3) Xabar kiriting\n"
+                "4) Interval tanlang"
+            )
         else:
             cfg = await scheduler_service.get_config(str(message.from_user.id))
             active_groups = await group_service.get_groups(str(message.from_user.id), active_only=True)
@@ -204,7 +283,14 @@ async def show_menu_callback(callback: CallbackQuery, notice: str | None = None)
         text = "👋 Xush kelibsiz!\n\n"
         text += f"🔌 Holat: {'✅ Ulangan' if has else '❌ Ulanmagan'}\n"
         if not has:
-            text += "\nBoshlash uchun:\n1) Login qiling\n2) Guruhlarni tanlang\n3) Xabar kiriting va interval tanlang"
+            text += (
+                "\n"
+                "Boshlash uchun:\n"
+                "1) Login qiling\n"
+                "2) Guruhlarni tanlang\n"
+                "3) Xabar kiriting\n"
+                "4) Interval tanlang"
+            )
         else:
             cfg = await scheduler_service.get_config(str(callback.from_user.id))
             active_groups = await group_service.get_groups(str(callback.from_user.id), active_only=True)
@@ -421,6 +507,10 @@ async def render_admin_panel(
 
 async def start_handler(message: Message):
     logger.info("Received /start or /menu from user_id=%s username=%s", message.from_user.id, message.from_user.username)
+    command = ((message.text or "").strip().split() or [""])[0].lower()
+    if command.startswith("/start"):
+        await send_start_guide(message)
+
     ok, reason = await access_service.check_access(
         tg_user_id=message.from_user.id,
         username=message.from_user.username,
@@ -476,6 +566,7 @@ async def adduser_handler(message: Message):
 
     async with db_session() as db:
         row = await db.get(AllowedUser, target_id)
+        was_active = bool(row and (row.expires_at is None or row.expires_at > datetime.utcnow()))
         if row:
             row.expires_at = expires
             row.username = row.username or "User"
@@ -483,6 +574,8 @@ async def adduser_handler(message: Message):
             db.add(AllowedUser(id=target_id, username="User", expires_at=expires))
 
     await message.answer(f"✅ Foydalanuvchi qo'shildi!\nID: {target_id}\nMuddat: {days} kun")
+    if not was_active and expires > datetime.utcnow():
+        await notify_access_granted(target_id)
 
 
 async def ban_handler(message: Message):
@@ -580,8 +673,9 @@ async def render_add_group_page(message: Message, user_id: int, page: int, is_ed
     bulk_add_text = "✅ Hammasi qo'shilgan" if all_selected else "➕ Barchasini qo'shish"
     rows.append([InlineKeyboardButton(text=bulk_add_text, callback_data=f"add_all_groups_{page}")])
     text = (
-        "📋 Guruh qo'shish:\n"
-        "Profilingizdagi guruhlarni tanlang (✅ tanlangan, ❌ tanlanmagan):\n"
+        "📋 Guruh qo'shish\n\n"
+        "Profilingizdagi guruhlarni tanlang.\n"
+        "✅ tanlangan, ❌ tanlanmagan\n"
         f"(Sahifa {page + 1}/{total_pages} | Tanlangan: {selected_count}/{len(options)})"
     )
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -760,7 +854,7 @@ async def on_about_bot(callback: CallbackQuery):
             [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_to_menu")],
         ]
     )
-    await callback.message.answer("📚 Bot haqida\nQulay formatni tanlang:", reply_markup=kb)
+    await callback.message.answer("📚 Bot haqida\n\nQulay formatni tanlang:", reply_markup=kb)
     await callback.answer()
 
 
@@ -772,7 +866,7 @@ async def on_full_manual(callback: CallbackQuery):
             [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_to_menu")],
         ]
     )
-    await callback.message.answer("📚 To'liq ma'lumot\nQulay formatni tanlang:", reply_markup=kb)
+    await callback.message.answer("📚 To'liq ma'lumot\n\nQulay formatni tanlang:", reply_markup=kb)
     await callback.answer()
 
 
@@ -789,10 +883,10 @@ async def on_restart_bot(callback: CallbackQuery):
 async def on_about_bot_text(callback: CallbackQuery):
     text = (
         "✨ Bot qanday ishlaydi\n\n"
-        "1. Login qiling\n"
-        "2. Xabar matnini kiriting\n"
-        "3. Interval tanlang\n"
-        "4. Bot avtomatik yuboradi\n\n"
+        "1) Login qiling\n"
+        "2) Xabar matnini kiriting\n"
+        "3) Interval tanlang\n"
+        "4) Bot avtomatik yuboradi\n\n"
         "Savol bo‘lsa admin bilan bog‘laning."
     )
     await callback.message.answer(text)
@@ -973,9 +1067,10 @@ async def on_admin_user(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="➕ +7 kun", callback_data=f"admin_add_week_{user_id}"),
                 InlineKeyboardButton(text="➕ +30 kun", callback_data=f"admin_add_month_{user_id}"),
-                InlineKeyboardButton(text="➖ -30 kun", callback_data=f"admin_sub_month_{user_id}"),
             ],
+            [InlineKeyboardButton(text="👑 VIP +10 yil", callback_data=f"admin_add_vip_{user_id}")],
             [InlineKeyboardButton(text="🚫 Block", callback_data=f"admin_block_{user_id}")],
             [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin_panel_all")],
         ]
@@ -997,14 +1092,27 @@ async def adjust_expiry(callback: CallbackQuery, days: int):
         if not row:
             await callback.answer("User topilmadi")
             return
+        was_active = bool(row.expires_at is None or row.expires_at > datetime.utcnow())
         base = row.expires_at if row.expires_at and row.expires_at > datetime.utcnow() else datetime.utcnow()
-        row.expires_at = base + timedelta(days=days)
+        new_expiry = base + timedelta(days=days)
+        row.expires_at = new_expiry
+        became_active = bool(new_expiry > datetime.utcnow()) and not was_active
     await callback.answer("Muddat yangilandi")
+    if days > 0 and became_active:
+        await notify_access_granted(user_id)
     await render_admin_panel(callback.message, is_edit=True, actor_username=callback.from_user.username)
 
 
 async def on_admin_add_month(callback: CallbackQuery):
     await adjust_expiry(callback, 30)
+
+
+async def on_admin_add_week(callback: CallbackQuery):
+    await adjust_expiry(callback, 7)
+
+
+async def on_admin_add_vip(callback: CallbackQuery):
+    await adjust_expiry(callback, 3650)
 
 
 async def on_admin_sub_month(callback: CallbackQuery):
@@ -1042,7 +1150,7 @@ async def on_contact(message: Message):
     )
     if not ok:
         user_states[message.from_user.id] = UserState.IDLE
-        await message.answer(reason or "⛔ Ruxsat yo'q")
+        await send_pretty_error(message, "Ruxsat yo'q", reason or "Sizga kirish ruxsati berilmagan.")
         return
 
     user_id = message.from_user.id
@@ -1056,7 +1164,7 @@ async def on_contact(message: Message):
         temp_phone[user_id] = phone
         await message.answer("Kod yuborildi. Kodni kiriting", reply_markup=ReplyKeyboardRemove())
     else:
-        await message.answer(f"Xato: {res.get('error')}")
+        await send_pretty_error(message, "Login xatosi", str(res.get("error") or "Noma'lum xatolik"))
 
 
 async def on_text(message: Message):
@@ -1068,7 +1176,7 @@ async def on_text(message: Message):
     )
     if not ok:
         user_states[message.from_user.id] = UserState.IDLE
-        await message.answer(reason or "⛔ Ruxsat yo'q")
+        await send_pretty_error(message, "Ruxsat yo'q", reason or "Sizga kirish ruxsati berilmagan.")
         return
 
     user_id = message.from_user.id
@@ -1081,7 +1189,7 @@ async def on_text(message: Message):
         phone = temp_phone.get(user_id)
         if not phone:
             user_states[user_id] = UserState.IDLE
-            await message.answer("Session topilmadi. Qaytadan Login bosing.")
+            await send_pretty_error(message, "Session topilmadi", "Qaytadan Login bosib jarayonni qayta boshlang.")
             return
         res = await userbot_service.complete_login(user_id, phone, text)
         logger.info(
@@ -1102,9 +1210,9 @@ async def on_text(message: Message):
             user_states[user_id] = UserState.WAITING_PHONE
             await userbot_service.cancel_login(user_id)
             temp_phone.pop(user_id, None)
-            await message.answer("Kod eskirgan. Qaytadan Login bosing.")
+            await send_pretty_error(message, "Kod eskirgan", "Qaytadan Login bosib yangi kod oling.")
         else:
-            await message.answer(f"Xato: {res.get('error')}")
+            await send_pretty_error(message, "Login xatosi", str(res.get("error") or "Noma'lum xatolik"))
 
     if state == UserState.WAITING_PHONE:
         if temp_phone.get(user_id) and 4 <= len(digits_only) <= 8:
@@ -1119,7 +1227,7 @@ async def on_text(message: Message):
             temp_phone[user_id] = text
             await message.answer("Kod yuborildi. Kodni kiriting")
         else:
-            await message.answer(f"Xato: {res.get('error')}")
+            await send_pretty_error(message, "Login xatosi", str(res.get("error") or "Noma'lum xatolik"))
         return
 
     if state == UserState.WAITING_CODE:
@@ -1130,7 +1238,7 @@ async def on_text(message: Message):
         phone = temp_phone.get(user_id)
         if not phone:
             user_states[user_id] = UserState.IDLE
-            await message.answer("Session topilmadi")
+            await send_pretty_error(message, "Session topilmadi", "Qaytadan Login bosib jarayonni qayta boshlang.")
             return
         res = await userbot_service.complete_2fa(user_id, phone, text)
         if res.get("success"):
@@ -1138,7 +1246,7 @@ async def on_text(message: Message):
             temp_phone.pop(user_id, None)
             await show_menu(message, "✅ Login + 2FA muvaffaqiyatli")
         else:
-            await message.answer(f"Xato: {res.get('error')}")
+            await send_pretty_error(message, "2FA xatosi", str(res.get("error") or "Noma'lum xatolik"))
         return
 
     if state == UserState.WAITING_BROADCAST_MSG:
@@ -1166,7 +1274,7 @@ async def on_text(message: Message):
                 msg = await get_last_saved_message(user_id)
         if not msg:
             user_states[user_id] = UserState.IDLE
-            await message.answer("Xabar topilmadi")
+            await send_pretty_error(message, "Xabar topilmadi", "Avval yuboriladigan xabar matnini kiriting.")
             return
         await scheduler_service.set_config(str(user_id), message=msg, interval=minutes * 60, is_active=True)
         await save_message_history_if_new(user_id, msg)
@@ -1260,7 +1368,9 @@ async def main():
     dp.callback_query.register(on_admin_panel, F.data == "admin_panel")
     dp.callback_query.register(on_admin_filter_panel, F.data.startswith("admin_panel_"))
     dp.callback_query.register(on_admin_user, F.data.startswith("admin_user_"))
+    dp.callback_query.register(on_admin_add_week, F.data.startswith("admin_add_week_"))
     dp.callback_query.register(on_admin_add_month, F.data.startswith("admin_add_month_"))
+    dp.callback_query.register(on_admin_add_vip, F.data.startswith("admin_add_vip_"))
     dp.callback_query.register(on_admin_sub_month, F.data.startswith("admin_sub_month_"))
     dp.callback_query.register(on_admin_block, F.data.startswith("admin_block_"))
     dp.callback_query.register(on_admin_announce, F.data == "admin_announce")
@@ -1269,6 +1379,28 @@ async def main():
     dp.message.register(on_import_groups_cmd, Command("import_groups"))
     dp.message.register(on_contact, F.contact)
     dp.message.register(on_text, F.text)
+
+    @dp.error()
+    async def on_global_error(event):
+        logger.exception("Unhandled bot error", exc_info=event.exception)
+        try:
+            message = None
+            if getattr(event.update, "message", None) is not None:
+                message = event.update.message
+            elif (
+                getattr(event.update, "callback_query", None) is not None
+                and getattr(event.update.callback_query, "message", None) is not None
+            ):
+                message = event.update.callback_query.message
+
+            if message is not None:
+                await send_pretty_error(
+                    message,
+                    "Ichki xatolik yuz berdi",
+                    "So'rovni qayta yuborib ko'ring.",
+                )
+        except Exception:
+            logger.exception("Failed to send global error response")
 
     await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
