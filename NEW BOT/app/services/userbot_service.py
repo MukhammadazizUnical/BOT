@@ -906,8 +906,15 @@ class UserbotService:
                                 .where(
                                     BroadcastAttempt.user_id == str(user_id),
                                     BroadcastAttempt.campaign_id == campaign_id,
-                                    BroadcastAttempt.assigned_account_id == account_id,
                                     BroadcastAttempt.status == "pending",
+                                    or_(
+                                        BroadcastAttempt.assigned_account_id
+                                        == account_id,
+                                        BroadcastAttempt.assigned_account_id.is_(None),
+                                        BroadcastAttempt.assigned_account_id.not_in(
+                                            available_ids
+                                        ),
+                                    ),
                                     or_(
                                         BroadcastAttempt.next_attempt_at.is_(None),
                                         BroadcastAttempt.next_attempt_at <= utcnow(),
