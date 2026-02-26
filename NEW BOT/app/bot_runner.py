@@ -81,6 +81,8 @@ def dedupe_remote_groups(groups: list[dict]) -> list[dict]:
 
 
 def start_guide_text() -> str:
+    admin_username = (settings.support_admin_username or "").strip().lstrip("@")
+    admin_contact = f"@{admin_username}" if admin_username else "admin bilan bog'laning"
     return (
         "👋 Assalomu alaykum!\n\n"
         "Telegram guruhlarga qo'lda yozib o'tirmang — e'lonlaringizni bot o'zi avtomatik yuboradi! 🚀\n\n"
@@ -90,7 +92,7 @@ def start_guide_text() -> str:
         "• Yuborish oralig'ini boshqarish\n"
         "• Xabarlar holatini kuzatish\n\n"
         "🔐 Boshlash uchun quyidagi tugma orqali telefon raqamingizni yuboring.\n\n"
-        "🎁 24 soat bepul sinov muddati mavjud!"
+        f"👤 Bot admini: {admin_contact}"
     )
 
 
