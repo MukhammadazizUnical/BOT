@@ -109,6 +109,17 @@ class UserbotService:
             return True
         return not UserbotService.is_retry_exhausted(next_retry_count, max_retries)
 
+    @staticmethod
+    def rotate_account_id(current_account_id: str, available_account_ids: list[str]) -> str:
+        if not available_account_ids:
+            return current_account_id
+        if current_account_id not in available_account_ids:
+            return available_account_ids[0]
+        if len(available_account_ids) == 1:
+            return current_account_id
+        idx = available_account_ids.index(current_account_id)
+        return available_account_ids[(idx + 1) % len(available_account_ids)]
+
     async def _ensure_user(self, user_id: int) -> None:
         async with db_session() as db:
             row = await db.get(User, str(user_id))
@@ -838,6 +849,9 @@ class UserbotService:
                     retry_delay_ms = max(
                         1000, int(settings.telegram_slowmode_retry_seconds) * 1000
                     )
+                    next_account_id = account_id
+                    if bool(classified.get("is_slowmode", False)):
+                        next_account_id = self.rotate_account_id(account_id, available_ids)
                     async with db_session() as db:
                         await db.execute(
                             update(BroadcastAttempt)
@@ -849,6 +863,7 @@ class UserbotService:
                                 status="pending",
                                 retry_count=retry_count,
                                 next_attempt_at=now_plus_ms(retry_delay_ms),
+                                assigned_account_id=next_account_id,
                                 last_error=err_msg,
                                 terminal_reason_code="retriable-rate-limit",
                             )

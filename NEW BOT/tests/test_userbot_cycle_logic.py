@@ -66,3 +66,14 @@ def test_compute_cycle_next_due_falls_back_to_now_for_invalid_queued_at():
         fallback_now=base,
     )
     assert due == datetime(2026, 2, 24, 8, 40, 0)
+
+
+def test_rotate_account_id_cycles_to_next_when_multiple_available():
+    assert (
+        UserbotService.rotate_account_id("acc-1", ["acc-1", "acc-2", "acc-3"])
+        == "acc-2"
+    )
+
+
+def test_rotate_account_id_keeps_same_when_single_available():
+    assert UserbotService.rotate_account_id("acc-1", ["acc-1"]) == "acc-1"
