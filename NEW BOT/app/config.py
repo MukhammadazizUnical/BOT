@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     broadcast_interval_safety_seconds: int = 0
 
     telegram_per_account_mpm: int = 6
-    telegram_per_account_min_delay_ms: int = 3500
+    telegram_per_account_min_delay_ms: int = 1000
+    telegram_per_account_max_delay_ms: int = 2000
     telegram_global_mps: int = 125
     telegram_slowmode_default_seconds: int = 300
     telegram_slowmode_retry_seconds: int = 10

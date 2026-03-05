@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import uuid
 import time
 from collections import defaultdict
@@ -626,9 +627,10 @@ class UserbotService:
         retry_max_ms = settings.broadcast_retry_max_ms
         retry_jitter_ratio = settings.broadcast_retry_jitter_ratio
 
-        per_account_delay_ms = max(
-            settings.telegram_per_account_min_delay_ms,
-            int(60000 / max(1, settings.telegram_per_account_mpm)),
+        per_account_delay_min_ms = max(0, int(settings.telegram_per_account_min_delay_ms))
+        per_account_delay_max_ms = max(
+            per_account_delay_min_ms,
+            int(getattr(settings, "telegram_per_account_max_delay_ms", per_account_delay_min_ms)),
         )
 
         async with db_session() as db:
@@ -888,7 +890,12 @@ class UserbotService:
                             )
                         )
 
-            await asyncio.sleep(per_account_delay_ms / 1000)
+            per_group_delay_ms = random.randint(
+                per_account_delay_min_ms,
+                per_account_delay_max_ms,
+            )
+            if per_group_delay_ms > 0:
+                await asyncio.sleep(per_group_delay_ms / 1000)
 
         worker_tasks = []
 
