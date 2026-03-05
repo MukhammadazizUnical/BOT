@@ -74,7 +74,7 @@ async def test_continuation_is_enqueued_for_deferred_batch(monkeypatch):
     assert len(queue.calls) == 1
     assert queue.calls[0]["campaign_id"] == "cmp-1"
     assert out["continuationEnqueued"] is True
-    assert out["continuationDelayMs"] == 500
+    assert out["continuationDelayMs"] == 5000
     assert out["continuationReason"] == "default-deferred"
 
 
@@ -147,6 +147,9 @@ async def test_lock_busy_returns_non_failure_outcome(monkeypatch):
     assert out["error"] == "user-lock-busy"
     assert out["outcome"] == "lock-busy"
     assert len(userbot.calls) == 0
+    assert len(queue.calls) == 1
+    assert out["continuationEnqueued"] is True
+    assert out["continuationReason"] == "lock-busy-retry"
 
 
 @pytest.mark.asyncio

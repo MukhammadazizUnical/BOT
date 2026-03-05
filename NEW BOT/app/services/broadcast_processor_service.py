@@ -134,6 +134,17 @@ class BroadcastProcessorService:
         token = f"{campaign_id}-{random.randint(10000, 99999)}"
         lock = await self.acquire_user_lock(user_id, token)
         if not lock:
+            retry_delay = max(2000, self.queue_service.continuation_delay_ms())
+            await self.queue_service.enqueue_send(
+                user_id=user_id,
+                message=message,
+                campaign_id=campaign_id,
+                queued_at=queued_at,
+                interval_seconds=payload_interval_seconds
+                if payload_interval_seconds > 0
+                else None,
+                delay_ms=retry_delay,
+            )
             await inc_metric(metric_key("processor.lock_busy", service="processor"))
             log_event(
                 self.logger,
@@ -141,6 +152,7 @@ class BroadcastProcessorService:
                 "broadcast_process_lock_busy",
                 user_id=user_id,
                 campaign_id=campaign_id,
+                retry_delay_ms=retry_delay,
             )
             return {
                 "success": True,
@@ -148,6 +160,9 @@ class BroadcastProcessorService:
                 "errors": [],
                 "error": "user-lock-busy",
                 "outcome": "lock-busy",
+                "continuationEnqueued": True,
+                "continuationDelayMs": retry_delay,
+                "continuationReason": "lock-busy-retry",
                 "scheduledAt": queued_at,
                 "startedAt": started_at.isoformat(),
                 "lagMs": lag_ms,
@@ -194,9 +209,12 @@ class BroadcastProcessorService:
                             delay = self.queue_service.continuation_delay_ms()
                             continuation_reason = "provider-fallback"
                     else:
-                        delay = max(
-                            self.queue_service.continuation_delay_ms(), next_due_ms
-                        )
+                        if next_due_ms > 0:
+                            delay = max(self.queue_service.continuation_delay_ms(), next_due_ms)
+                        elif ready_pending_count > 0:
+                            delay = self.queue_service.continuation_delay_ms()
+                        else:
+                            delay = max(5000, self.queue_service.continuation_delay_ms() * 3)
                         continuation_reason = "default-deferred"
                     await self.queue_service.enqueue_send(
                         user_id=user_id,
