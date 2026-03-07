@@ -183,6 +183,7 @@ class UserbotService:
             name=temp_session_name,
             api_id=settings.tg_api_id,
             api_hash=settings.tg_api_hash,
+            sleep_threshold=0,
             no_updates=True,
         )
         try:
@@ -238,6 +239,7 @@ class UserbotService:
                 name=session_name,
                 api_id=settings.tg_api_id,
                 api_hash=settings.tg_api_hash,
+                sleep_threshold=0,
                 no_updates=True,
             )
             await client.connect()
@@ -319,6 +321,7 @@ class UserbotService:
                 name=session_name,
                 api_id=settings.tg_api_id,
                 api_hash=settings.tg_api_hash,
+                sleep_threshold=0,
                 no_updates=True,
             )
             await client.connect()
@@ -402,6 +405,7 @@ class UserbotService:
                     api_hash=settings.tg_api_hash,
                     session_string=account.session_string,
                     in_memory=True,
+                    sleep_threshold=0,
                     no_updates=True,
                 )
                 await client.start()
@@ -767,7 +771,9 @@ class UserbotService:
                     await asyncio.sleep(max(0.001, 1 - (now - timestamps[0])))
 
         budget_lock = asyncio.Lock()
+        sent_count_lock = asyncio.Lock()
         attempts_claimed = 0
+        sent_this_run = 0
 
         async def reserve_slot() -> bool:
             nonlocal attempts_claimed
@@ -778,6 +784,7 @@ class UserbotService:
                 return True
 
         async def run_attempt(attempt: BroadcastAttempt, account_id: str) -> None:
+            nonlocal sent_this_run
             client = await self.get_connected_client(user_id, account_id)
             if not client:
                 async with db_session() as db:
@@ -834,6 +841,8 @@ class UserbotService:
                             last_error=None,
                         )
                     )
+                async with sent_count_lock:
+                    sent_this_run += 1
             except Exception as e:
                 err_msg = normalize_error_message(e)
                 classified = classify_telegram_error(
@@ -1045,11 +1054,13 @@ class UserbotService:
         summary["readyPendingCount"] = ready_pending_count
         summary["providerConstrainedDelay"] = provider_constrained_pending > 0
 
+        summary["sentThisRun"] = sent_this_run
+
         return BroadcastExecutionResult(
             success=summary["failed"] == 0
             and summary["pending"] == 0
             and summary["inFlight"] == 0,
-            count=summary["sent"],
+            count=sent_this_run,
             errors=[],
             summary=summary,
         )

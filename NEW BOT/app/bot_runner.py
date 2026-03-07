@@ -774,14 +774,17 @@ async def on_add_all_groups(callback: CallbackQuery):
 
     added = 0
     for group in remote:
-        gid = str(group.get("id"))
+        gid_raw = str(group.get("id"))
+        kind = group.get("type", "chat")
+        gid = group_service._normalize_group_id(gid_raw, kind)
         if gid not in existing_ids:
             added += 1
+            existing_ids.add(gid)
         await group_service.add_group(
             str(callback.from_user.id),
             gid,
             group["title"],
-            group.get("type", "chat"),
+            kind,
             group.get("access_hash"),
         )
 

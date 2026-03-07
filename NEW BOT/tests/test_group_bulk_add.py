@@ -32,7 +32,7 @@ async def test_add_all_groups_adds_missing_groups(monkeypatch):
 
     async def fake_remote(_user_id):
         return [
-            {"id": "g1", "title": "Group 1", "type": "supergroup", "access_hash": "a1"},
+            {"id": "1", "title": "Group 1", "type": "supergroup", "access_hash": "a1"},
             {"id": "g2", "title": "Group 2", "type": "chat", "access_hash": None},
         ]
 
@@ -41,7 +41,7 @@ async def test_add_all_groups_adds_missing_groups(monkeypatch):
             self.id = gid
 
     async def fake_get_groups(_user_id, active_only=False):
-        return [_G("g1")]
+        return [_G("-1001")]
 
     async def fake_add_group(user_id, group_id, title, kind, access_hash):
         added.append((user_id, group_id, title, kind, access_hash))
@@ -83,3 +83,47 @@ async def test_add_all_groups_handles_empty_remote(monkeypatch):
 
     assert callback.answer_calls[-1][0] == "Import uchun guruh topilmadi"
     assert callback.answer_calls[-1][1] is True
+
+
+@pytest.mark.asyncio
+async def test_add_all_groups_normalizes_supergroup_existing_ids(monkeypatch):
+    added = []
+
+    async def fake_logged_in(_callback):
+        return True
+
+    async def fake_remote(_user_id):
+        return [
+            {
+                "id": "12345",
+                "title": "Super Group",
+                "type": "supergroup",
+                "access_hash": "ah",
+            }
+        ]
+
+    class _G:
+        def __init__(self, gid: str):
+            self.id = gid
+
+    async def fake_get_groups(_user_id, active_only=False):
+        return [_G("-10012345")]
+
+    async def fake_add_group(user_id, group_id, title, kind, access_hash):
+        added.append((user_id, group_id, title, kind, access_hash))
+
+    async def fake_render(_message, _user_id, _page, is_edit=False):
+        return None
+
+    monkeypatch.setattr(bot_runner, "ensure_logged_in", fake_logged_in)
+    monkeypatch.setattr(bot_runner.userbot_service, "get_remote_groups", fake_remote)
+    monkeypatch.setattr(bot_runner.group_service, "get_groups", fake_get_groups)
+    monkeypatch.setattr(bot_runner.group_service, "add_group", fake_add_group)
+    monkeypatch.setattr(bot_runner, "render_add_group_page", fake_render)
+
+    callback = _DummyCallback(100, "add_all_groups_0")
+    await bot_runner.on_add_all_groups(callback)
+
+    assert len(added) == 1
+    assert added[0][1] == "-10012345"
+    assert callback.answer_calls[-1][0] == "Barcha guruhlar allaqachon qo'shilgan ✅"
