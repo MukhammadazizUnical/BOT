@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 
 from app.config import settings
 from app.services.broadcast_processor_service import BroadcastProcessorService
@@ -318,3 +319,14 @@ async def _async_none():
 
 async def _async_false():
     return False
+
+
+def test_resolve_cycle_anchor_prefers_queued_time():
+    queued_dt = datetime(2026, 3, 9, 9, 30, 0)
+    started_at = datetime(2026, 3, 9, 9, 42, 0)
+    assert BroadcastProcessorService.resolve_cycle_anchor(queued_dt, started_at) == queued_dt
+
+
+def test_resolve_cycle_anchor_falls_back_to_started_time():
+    started_at = datetime(2026, 3, 9, 9, 42, 0)
+    assert BroadcastProcessorService.resolve_cycle_anchor(None, started_at) == started_at

@@ -36,25 +36,7 @@ The overlay also loads `observability/prometheus/alerts.yml` with these default 
 
 You can tune thresholds in `observability/prometheus/alerts.yml` based on your traffic profile.
 
-Alerts are routed through Alertmanager and sent to `app` webhook endpoint:
-
-- `POST /alerts/prometheus`
-
-By default, app does NOT forward alert messages to Telegram (`ALERT_WEBHOOK_FORWARD_ENABLED=false`).
-If you want forwarding, set `ALERT_WEBHOOK_FORWARD_ENABLED=true` and configure `OWNER_USER_ID` + `TG_BOT_TOKEN`.
-
-To control Telegram alert pacing:
-
-- Alertmanager `group_interval` and `repeat_interval` are set to `5m` in `observability/alertmanager/alertmanager.yml`.
-- App-side cooldown suppresses duplicate `firing` notifications for the same alert signature using Redis.
-- Cooldown window is controlled by `ALERT_WEBHOOK_COOLDOWN_SECONDS` (default `300`).
-
-### Optional webhook authentication
-
-Set `ALERT_WEBHOOK_TOKEN` in `.env` to require Bearer auth on `/alerts/prometheus`.
-
-- App validates `Authorization: Bearer <ALERT_WEBHOOK_TOKEN>`.
-- If you enable this, update `observability/alertmanager/alertmanager.yml` receiver to send the same Bearer token.
+Alerts are still evaluated by Prometheus and visible in Alertmanager UI, but app-side webhook forwarding is removed.
 
 ## Import Grafana dashboard
 
@@ -85,8 +67,6 @@ If Prometheus runs outside Docker, use your published host port (for this projec
 - `processor_lock_busy{service="processor"}`: lock contention signals.
 - `processor_last_lag_ms{service="processor"}`: last observed queue lag.
 - `worker_startup_count{service="worker"}`: worker restart counter.
-- `alertmanager_webhook_received{service="app"}`: webhook notifications received by app.
-- `alertmanager_webhook_sent{service="app"}`: notifications successfully forwarded to Telegram.
 
 ## Quick validation
 

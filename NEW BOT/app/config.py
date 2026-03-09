@@ -17,14 +17,9 @@ class Settings(BaseSettings):
     tg_error_sticker_id: str = ""
     owner_user_id: str = ""
     support_admin_username: str = ""
-    alert_webhook_token: str = ""
-    alert_webhook_cooldown_seconds: int = 300
-    alert_webhook_forward_enabled: bool = False
 
     database_url: str = "postgresql+asyncpg://postgres:1111@localhost:5432/tgbot"
     redis_url: str = "redis://localhost:6379/0"
-    upstash_redis_rest_url: str = ""
-    upstash_redis_rest_token: str = ""
 
     broadcast_concurrency: int = 8
     broadcast_job_attempts: int = 3

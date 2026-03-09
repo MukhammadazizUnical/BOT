@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from aiogram import Bot, Dispatcher, F
@@ -63,6 +63,10 @@ broadcast_message_text: dict[int, str] = {}
 
 def is_super_admin(username: str | None) -> bool:
     return access_service.normalize_username(username) in access_service.super_admins
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def dedupe_remote_groups(groups: list[dict]) -> list[dict]:
@@ -209,7 +213,7 @@ async def show_menu(message: Message, notice: str | None = None):
     admin = is_super_admin(message.from_user.username)
     menu_is_active = False
     if admin:
-        now = datetime.utcnow()
+        now = utcnow_naive()
         async with db_session() as db:
             total = (await db.execute(select(func.count(AllowedUser.id)))).scalar() or 0
             requested = (await db.execute(select(func.count(AllowedUser.id)).where(AllowedUser.expires_at <= now))).scalar() or 0
@@ -265,7 +269,7 @@ async def show_menu_callback(callback: CallbackQuery, notice: str | None = None)
     admin = is_super_admin(callback.from_user.username)
     menu_is_active = False
     if admin:
-        now = datetime.utcnow()
+        now = utcnow_naive()
         async with db_session() as db:
             total = (await db.execute(select(func.count(AllowedUser.id)))).scalar() or 0
             requested = (await db.execute(select(func.count(AllowedUser.id)).where(AllowedUser.expires_at <= now))).scalar() or 0
@@ -413,7 +417,7 @@ async def render_admin_panel(
         return
 
     per_page = 10
-    now = datetime.utcnow()
+    now = utcnow_naive()
 
     async with db_session() as db:
         total = (await db.execute(select(func.count(AllowedUser.id)))).scalar() or 0
@@ -564,11 +568,12 @@ async def adduser_handler(message: Message):
         return
     target_id = parts[1]
     days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 30
-    expires = datetime.utcnow() + timedelta(days=days)
+    expires = utcnow_naive() + timedelta(days=days)
 
     async with db_session() as db:
         row = await db.get(AllowedUser, target_id)
-        was_active = bool(row and (row.expires_at is None or row.expires_at > datetime.utcnow()))
+        now = utcnow_naive()
+        was_active = bool(row and (row.expires_at is None or row.expires_at > now))
         if row:
             row.expires_at = expires
             row.username = row.username or "User"
@@ -576,7 +581,7 @@ async def adduser_handler(message: Message):
             db.add(AllowedUser(id=target_id, username="User", expires_at=expires))
 
     await message.answer(f"✅ Foydalanuvchi qo'shildi!\nID: {target_id}\nMuddat: {days} kun")
-    if not was_active and expires > datetime.utcnow():
+    if not was_active and expires > now:
         await notify_access_granted(target_id)
 
 
@@ -1059,7 +1064,7 @@ async def on_admin_user(callback: CallbackQuery):
         await callback.answer("User topilmadi")
         return
     status = row.expires_at.strftime("%Y-%m-%d") if row.expires_at else "Doimiy"
-    is_active_user = bool(row.expires_at is None or row.expires_at > datetime.utcnow())
+    is_active_user = bool(row.expires_at is None or row.expires_at > utcnow_naive())
     state_text = "🟢 Faol" if is_active_user else "🟠 So'rovda"
     display_name = row.username or row.first_name or row.id
     text = (
@@ -1097,11 +1102,12 @@ async def adjust_expiry(callback: CallbackQuery, days: int):
         if not row:
             await callback.answer("User topilmadi")
             return
-        was_active = bool(row.expires_at is None or row.expires_at > datetime.utcnow())
-        base = row.expires_at if row.expires_at and row.expires_at > datetime.utcnow() else datetime.utcnow()
+        now = utcnow_naive()
+        was_active = bool(row.expires_at is None or row.expires_at > now)
+        base = row.expires_at if row.expires_at and row.expires_at > now else now
         new_expiry = base + timedelta(days=days)
         row.expires_at = new_expiry
-        became_active = bool(new_expiry > datetime.utcnow()) and not was_active
+        became_active = bool(new_expiry > now) and not was_active
     await callback.answer("Muddat yangilandi")
     if days > 0 and became_active:
         await notify_access_granted(user_id)
@@ -1290,7 +1296,7 @@ async def on_text(message: Message):
     if state == UserState.WAITING_ADMIN_ANNOUNCE and is_super_admin(message.from_user.username):
         async with db_session() as db:
             users = (
-                await db.execute(select(AllowedUser.id).where(or_(AllowedUser.expires_at.is_(None), AllowedUser.expires_at > datetime.utcnow())))
+                await db.execute(select(AllowedUser.id).where(or_(AllowedUser.expires_at.is_(None), AllowedUser.expires_at > utcnow_naive())))
             ).all()
 
         bot = Bot(token=settings.tg_bot_token)

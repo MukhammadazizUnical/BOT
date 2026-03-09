@@ -442,11 +442,11 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(alertmanager_webhook_sent{service=\"app\"}[15m])) / clamp_min(sum(rate(alertmanager_webhook_received{service=\"app\"}[15m])), 1)",
+          "expr": "sum(rate(processor_result_by_outcome{service=\"processor\",outcome=\"success\"}[15m])) / clamp_min(sum(rate(processor_result_total{service=\"processor\"}[15m])), 1)",
           "refId": "A"
         }
       ],
-      "title": "Alert Forward Success Ratio (15m)",
+      "title": "Processor Success Ratio (15m)",
       "type": "stat"
     },
     {
@@ -487,8 +487,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(alertmanager_webhook_received{service=\"app\"}[5m])",
-          "legendFormat": "received",
+          "expr": "rate(processor_result_total{service=\"processor\"}[5m])",
+          "legendFormat": "processed",
           "refId": "A"
         },
         {
@@ -496,8 +496,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(alertmanager_webhook_sent{service=\"app\"}[5m])",
-          "legendFormat": "sent",
+          "expr": "rate(processor_result_by_outcome{service=\"processor\",outcome=\"failed\"}[5m])",
+          "legendFormat": "failed",
           "refId": "B"
         },
         {
@@ -505,12 +505,12 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(alertmanager_webhook_failed{service=\"app\"}[5m])",
-          "legendFormat": "failed",
+          "expr": "rate(processor_result_by_outcome{service=\"processor\",outcome=\"deferred\"}[5m])",
+          "legendFormat": "deferred",
           "refId": "C"
         }
       ],
-      "title": "Alert Webhook Events (5m)",
+      "title": "Processor Events (5m)",
       "type": "timeseries"
     }
   ],

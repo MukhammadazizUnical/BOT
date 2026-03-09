@@ -1,6 +1,7 @@
+import inspect
 import logging
 import random
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.config import settings
 from app.db import db_session
@@ -10,7 +11,7 @@ from app.models import BroadcastConfig
 from app.redis_client import redis_client
 from app.services.broadcast_queue_service import BroadcastQueueService
 from app.services.userbot_service import UserbotService
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 
 class BroadcastProcessorService:
@@ -23,15 +24,29 @@ class BroadcastProcessorService:
 
     async def acquire_user_lock(self, user_id: str, token: str) -> bool:
         key = f"broadcast:user-lock:{user_id}"
-        result = await redis_client.set(
+        maybe_result = redis_client.set(
             key, token, px=max(60000, settings.broadcast_user_lock_ttl_ms), nx=True
         )
+        if inspect.isawaitable(maybe_result):
+            result = await maybe_result
+        else:
+            result = maybe_result
         return bool(result)
 
     async def release_user_lock(self, user_id: str, token: str) -> None:
         key = f"broadcast:user-lock:{user_id}"
         script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
-        await redis_client.eval(script, 1, key, token)
+        result = redis_client.eval(script, 1, key, token)
+        if inspect.isawaitable(result):
+            await result
+
+    @staticmethod
+    def resolve_cycle_anchor(queued_dt: datetime | None, started_at: datetime) -> datetime:
+        return queued_dt if queued_dt is not None else started_at
+
+    @staticmethod
+    def utcnow_naive() -> datetime:
+        return datetime.now(UTC).replace(tzinfo=None)
 
     async def process(self, payload: dict) -> dict:
         if settings.bot_role.strip().lower() != "worker":
@@ -51,9 +66,9 @@ class BroadcastProcessorService:
         user_id = str(payload.get("userId"))
         message = payload.get("message", "")
         campaign_id = payload.get("campaignId", "")
-        queued_at = str(payload.get("queuedAt") or datetime.utcnow().isoformat())
+        queued_at = str(payload.get("queuedAt") or self.utcnow_naive().isoformat())
         payload_interval_seconds = int(payload.get("intervalSeconds") or 0)
-        started_at = datetime.utcnow()
+        started_at = self.utcnow_naive()
         campaign_db_id = int(campaign_id) if str(campaign_id).isdigit() else None
         log_event(
             self.logger,
@@ -181,14 +196,19 @@ class BroadcastProcessorService:
             continuation_reason = None
 
             if campaign_db_id is not None and int(result.count or 0) > 0:
+                cycle_anchor = self.resolve_cycle_anchor(queued_dt, started_at)
                 async with db_session() as db:
                     await db.execute(
                         update(BroadcastConfig)
                         .where(
                             BroadcastConfig.user_id == user_id,
                             BroadcastConfig.id == campaign_db_id,
+                            or_(
+                                BroadcastConfig.last_run_at.is_(None),
+                                BroadcastConfig.last_run_at < cycle_anchor,
+                            ),
                         )
-                        .values(last_run_at=started_at)
+                        .values(last_run_at=cycle_anchor)
                     )
 
             if not result.success:

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,7 +15,7 @@ class _Cfg:
 async def test_due_logic_respects_early_factor(monkeypatch):
     service = SchedulerService(queue_service=None)  # type: ignore[arg-type]
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     due = _Cfg(interval=300, last_run_at=now - timedelta(seconds=300))
     not_due = _Cfg(interval=300, last_run_at=now - timedelta(seconds=30))
 
@@ -43,14 +43,14 @@ def test_deterministic_jitter_is_stable():
 def test_is_due_respects_five_minute_boundary(monkeypatch):
     monkeypatch.setattr("app.services.scheduler_service.settings.scheduler_early_factor", 1.0, raising=False)
     monkeypatch.setattr("app.services.scheduler_service.settings.broadcast_interval_safety_seconds", 0, raising=False)
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     assert SchedulerService.is_due(now - timedelta(seconds=299), 300, now=now) is False
     assert SchedulerService.is_due(now - timedelta(seconds=300), 300, now=now) is True
 
 
 def test_is_due_ignores_interval_safety_seconds(monkeypatch):
     monkeypatch.setattr("app.services.scheduler_service.settings.broadcast_interval_safety_seconds", 15, raising=False)
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     assert SchedulerService.is_due(now - timedelta(seconds=299), 300, now=now) is False
     assert SchedulerService.is_due(now - timedelta(seconds=300), 300, now=now) is True
 

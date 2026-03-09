@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -37,6 +37,10 @@ class AccessService:
     def expired_denied_message(self) -> str:
         return f"⚠️ Obuna vaqtingiz tugagan. Admin ga murojaat qiling: {self.admin_contact()}"
 
+    @staticmethod
+    def utcnow_naive() -> datetime:
+        return datetime.now(UTC).replace(tzinfo=None)
+
     async def check_access(self, tg_user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> tuple[bool, str | None]:
         if self.normalize_username(username) in self.super_admins:
             return True, None
@@ -46,7 +50,7 @@ class AccessService:
             return True, None
 
         async with db_session() as db:
-            now = datetime.utcnow()
+            now = self.utcnow_naive()
             user = await db.get(AllowedUser, str(tg_user_id))
             if not user:
                 try:

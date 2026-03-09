@@ -1,7 +1,7 @@
 import math
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 
 RETRIABLE_ERROR_TOKENS = (
@@ -129,7 +129,7 @@ def build_attempt_idempotency_key(campaign_id: str, target_group_id: str) -> str
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def now_plus_ms(ms: int) -> datetime:

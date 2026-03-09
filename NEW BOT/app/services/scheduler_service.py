@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import exists, or_, select
 
@@ -45,6 +45,10 @@ class SchedulerService:
                 self.logger.exception("Scheduler loop iteration failed")
             await asyncio.sleep(max(1, settings.scheduler_check_interval_ms // 1000))
 
+    @staticmethod
+    def utcnow_naive() -> datetime:
+        return datetime.now(UTC).replace(tzinfo=None)
+
     async def acquire_lock(self, token: str) -> bool:
         result = await redis_client.set(self.lock_key, token, px=self.lock_ttl_ms, nx=True)
         return bool(result)
@@ -54,7 +58,7 @@ class SchedulerService:
         await redis_client.eval(script, 1, self.lock_key, token)
 
     async def check_and_run(self) -> None:
-        token = f"scheduler-{datetime.utcnow().timestamp()}"
+        token = f"scheduler-{self.utcnow_naive().timestamp()}"
         if not await self.acquire_lock(token):
             return
 
@@ -63,7 +67,7 @@ class SchedulerService:
             if not due:
                 return
 
-            now = datetime.utcnow()
+            now = self.utcnow_naive()
             queued_count = 0
             for config in due:
                 safe_interval = max(60, int(config.interval or 60))
@@ -99,7 +103,7 @@ class SchedulerService:
             await self.release_lock(token)
 
     async def get_due_configs(self, limit: int) -> list[BroadcastConfig]:
-        now = datetime.utcnow()
+        now = self.utcnow_naive()
         due: list[BroadcastConfig] = []
         async with db_session() as db:
             rows = (
@@ -137,7 +141,7 @@ class SchedulerService:
     def is_due(last_run_at: datetime | None, interval_seconds: int, now: datetime | None = None) -> bool:
         if last_run_at is None:
             return True
-        reference_now = now or datetime.utcnow()
+        reference_now = now or datetime.now(UTC).replace(tzinfo=None)
         threshold_seconds = max(60, int(interval_seconds))
         elapsed = (reference_now - last_run_at).total_seconds()
         return elapsed >= threshold_seconds
